@@ -323,7 +323,7 @@
 
       // --- КЛИЕНТСКОЕ КЭШИРОВАНИЕ ---
       // 1. Пробуем загрузиться мгновенно из памяти телефона
-      const cachedUser = localStorage.getItem('trip_user_' + USER_ID);
+      const cachedUser = localStorage.getItem('trip_user_v2_' + USER_ID);
       const cachedDepts = localStorage.getItem('trip_depts');
 
       if (cachedUser && cachedDepts) {
@@ -356,7 +356,7 @@
         }
 
         // Сохраняем в память телефона
-        localStorage.setItem('trip_user_' + USER_ID, JSON.stringify(userData));
+        localStorage.setItem('trip_user_v2_' + USER_ID, JSON.stringify(userData));
         localStorage.setItem('trip_depts', JSON.stringify(deptData));
 
         // Если это не фоновое обновление, применяем и рендерим
@@ -387,7 +387,7 @@
     }
 
     function forceReload() {
-      localStorage.removeItem('trip_user_' + USER_ID); // Чистим кэш
+      localStorage.removeItem('trip_user_v2_' + USER_ID); // Чистим кэш
       localStorage.removeItem('trip_depts');
       location.reload();
     }
@@ -809,14 +809,14 @@
       const isActionable = isApprover && (item.status === 'Нова' || item.status === 'Уточнено' || item.status === 'Потребує уточнення');
       if (isActionable) {
         footerHtml = `
-            <div class="d-flex gap-2 mt-3 pt-2 border-top">
-                <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'reject', this)">Відхилити</button>
-                <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'approve', this)">Погодити</button>
+            <div class="d-flex gap-2 mt-3 pt-2 border-top no-modal">
+                <button class="btn btn-outline-danger flex-grow-1" onclick="makeDecision('${item.reqId}', 'reject', this)">Відхилити</button>
+                <button class="btn btn-success flex-grow-1" onclick="makeDecision('${item.reqId}', 'approve', this)">Погодити</button>
             </div>`;
         footerHtml += `
-            <div class="d-flex gap-2 mt-2">
-                <button class="btn btn-outline-warning flex-grow-1" onclick="event.stopPropagation(); openClarifyModal('${item.reqId}')">Потребує уточнення</button>
-                <button class="btn btn-outline-primary flex-grow-1" onclick="event.stopPropagation(); openEditModal('${item.reqId}')">Редагувати та погодити</button>
+            <div class="d-flex gap-2 mt-2 no-modal">
+                <button class="btn btn-outline-warning flex-grow-1" onclick="openClarifyModal('${item.reqId}')">Потребує уточнення</button>
+                <button class="btn btn-outline-primary flex-grow-1" onclick="openEditModal('${item.reqId}')">Редагувати та погодити</button>
             </div>`;
       } else {
         if (item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
@@ -848,22 +848,22 @@
       let clarifyAnswerHtml = '';
       if (!isApprover && item.status === 'Потребує уточнення') {
         clarifyAnswerHtml = `
-            <div class="mt-2" onclick="event.stopPropagation()">
+            <div class="mt-2 no-modal">
               <textarea class="form-control mb-2" id="clarify-answer-${item.reqId}" rows="2" placeholder="Ваша відповідь..."></textarea>
-              <button class="btn btn-warning w-100" onclick="event.stopPropagation(); submitClarificationAnswer('${item.reqId}', this)">Відправити уточнення</button>
+              <button class="btn btn-warning w-100" onclick="submitClarificationAnswer('${item.reqId}', this)">Відправити уточнення</button>
             </div>`;
       }
 
       let expenseHtml = '';
       if (!isApprover && item.status === 'Погоджено') {
         expenseHtml = `
-            <div class="mt-2" onclick="event.stopPropagation()">
-              <button class="btn btn-outline-primary w-100" onclick="event.stopPropagation(); toggleExpensesForm('${item.reqId}')">Додати витрати</button>
+            <div class="mt-2 no-modal">
+              <button class="btn btn-outline-primary w-100" onclick="toggleExpensesForm('${item.reqId}')">Додати витрати</button>
               <div class="mt-2 d-none" id="exp-block-${item.reqId}">
                 <div id="exp-rows-${item.reqId}"></div>
-                <div class="d-flex gap-2">
-                  <button class="btn btn-light flex-grow-1" onclick="event.stopPropagation(); addExpenseRow('${item.reqId}')">+ Додати ще</button>
-                  <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); submitExpenses('${item.reqId}', this)">Відправити</button>
+                <div class="d-flex gap-2 no-modal">
+                  <button class="btn btn-light flex-grow-1" onclick="addExpenseRow('${item.reqId}')">+ Додати ще</button>
+                  <button class="btn btn-success flex-grow-1" onclick="submitExpenses('${item.reqId}', this)">Відправити</button>
                 </div>
               </div>
             </div>`;
@@ -948,17 +948,16 @@
               <span>Разом:</span><span>${total} ₴</span>
             </div>
           </div>
-          <div class="d-flex gap-2 mt-3 pt-2 border-top">
-            <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'reject', this)">Відхилити</button>
-            <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'approve', this)">Погодити</button>
+          <div class="d-flex gap-2 mt-3 pt-2 border-top no-modal">
+            <button class="btn btn-outline-danger flex-grow-1" onclick="decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'reject', this)">Відхилити</button>
+            <button class="btn btn-success flex-grow-1" onclick="decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'approve', this)">Погодити</button>
           </div>
         </div>`;
     }
 
     async function openDetailsModal(reqId, ev) {
       if (ev && ev.target) {
-        const btn = ev.target.closest('button');
-        if (btn) return;
+        if (ev.target.closest('.no-modal')) return;
       }
       const req = REQUEST_CACHE[reqId];
       if (!req) { showToast("Дані заявки не знайдено"); return; }
