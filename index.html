@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Відрядження</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+      :root { --primary-color: #0d6efd; --bg-color: #f0f2f5; }
+      body { padding: 15px 0px 15px 0px; background-color: var(--bg-color); font-family: -apple-system, system-ui, sans-serif; padding-bottom: 90px; }
+      input, select, textarea { font-size: 16px !important; }
+      
+      .card { border-radius: 16px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.04); margin-bottom: 12px; transition: opacity 0.3s; }
+      
+      .nav-pills { background: #fff; padding: 5px; border-radius: 14px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+      .nav-pills .nav-link { border-radius: 10px; color: #6c757d; font-weight: 600; font-size: 0.9rem; padding: 10px; }
+      .nav-pills .nav-link.active { background-color: var(--primary-color); color: #fff; }
+
+      .badge-status { font-weight: 600; padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; text-transform: uppercase; }
+      .st-new { background-color: #e3f2fd; color: #0d47a1; }
+      .st-approved { background-color: #d1e7dd; color: #0f5132; }
+      .st-rejected { background-color: #f8d7da; color: #842029; }
+
+      .marker-flash { border-left: 5px solid #ffc107; }
+      .marker-blue { border-left: 5px solid #0d6efd; }
+      .marker-profi { border-left: 5px solid #6610f2; }
+      .marker-gray { border-left: 5px solid #6c757d; }
+
+      .total-box { background: #f8f9fa; border-radius: 12px; padding: 15px; border: 1px dashed #adb5bd; }
+      .toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1060; width: 97%; max-width: 400px; }
+      .toast { background: #333; color: #fff; border-radius: 12px; }
+    </style>
+  </head>
+  <body>
+
+    <div class="container" style="max-width: 600px;">
+      
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Користувач</small>
+          <div class="fw-bold fs-5 text-dark" id="ui-userName">...</div>
+        </div>
+        <div>
+           <span class="badge bg-light text-dark border"><i class="bi bi-shield-lock"></i> <span id="ui-userRole">...</span></span>
+           <button class="btn btn-sm btn-white text-primary ms-1" onclick="forceReload()">
+             <i class="bi bi-arrow-clockwise fs-5"></i>
+           </button>
+        </div>
+      </div>
+
+      <ul class="nav nav-pills nav-fill" id="pills-tab"></ul>
+
+      <div id="appContent">
+        <div class="text-center mt-5 pt-4">
+          <div class="spinner-border text-primary"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast-container">
+      <div id="liveToast" class="toast align-items-center border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body d-flex align-items-center">
+            <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+            <span id="toastMessage">...</span>
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      const API_URL = "https://script.google.com/macros/s/AKfycbx0v1qTvhc7VIjnEBfSTTGUT2jW8ITEzF6rJ4_ENgKzGLbC2MGiUKFTgUuOnG9sWgr-/exec"; 
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const USER_ID = urlParams.get('userid');
+      
+      let USER_NAME = "";
+      let USER_ROLE = "";
+      let MY_COMPANIES = [];
+      let DEPARTMENTS = [];
+      let CURRENT_VIEW = '';
+      let toastInstance;
+
+      window.onload = async function() {
+        toastInstance = new bootstrap.Toast(document.getElementById('liveToast'), { delay: 3000 });
+        
+        if (!USER_ID) {
+           document.getElementById('appContent').innerHTML = '<div class="alert alert-danger text-center">Не вказано User ID</div>';
+           return;
+        }
+
+        // --- КЛИЕНТСКОЕ КЭШИРОВАНИЕ ---
+        // 1. Пробуем загрузиться мгновенно из памяти телефона
+        const cachedUser = localStorage.getItem('trip_user_' + USER_ID);
+        const cachedDepts = localStorage.getItem('trip_depts');
+
+        if (cachedUser && cachedDepts) {
+            console.log("Loaded from local cache");
+            applyUserData(JSON.parse(cachedUser));
+            DEPARTMENTS = JSON.parse(cachedDepts);
+            initApp();
+            
+            // В фоне обновляем данные (чтобы если права изменились, юзер узнал об этом)
+            fetchUserData(true); 
+        } else {
+            // Если кэша нет, грузим с сервера
+            await fetchUserData(false);
+        }
+      };
+
+      async function fetchUserData(inBackground) {
+         try {
+            const [resUser, resDep] = await Promise.all([
+                fetch(`${API_URL}?action=getUserInfo&userId=${USER_ID}`),
+                fetch(`${API_URL}?action=getDepartments`)
+            ]);
+
+            const userData = await resUser.json();
+            const deptData = await resDep.json();
+
+            if (userData.error) {
+                if(!inBackground) document.getElementById('appContent').innerHTML = `<div class="alert alert-danger text-center">${userData.error}</div>`;
+                return;
+            }
+
+            // Сохраняем в память телефона
+            localStorage.setItem('trip_user_' + USER_ID, JSON.stringify(userData));
+            localStorage.setItem('trip_depts', JSON.stringify(deptData));
+
+            // Если это не фоновое обновление, применяем и рендерим
+            if (!inBackground) {
+                applyUserData(userData);
+                DEPARTMENTS = deptData;
+                initApp();
+            } else {
+                // Если фоновое - просто обновляем переменные
+                applyUserData(userData);
+                DEPARTMENTS = deptData;
+            }
+         } catch(e) {
+            if(!inBackground) showToast("Помилка з'єднання: " + e);
+         }
+      }
+
+      function applyUserData(data) {
+          USER_NAME = data.name;
+          USER_ROLE = data.role;
+          const raw = data.company || "";
+          MY_COMPANIES = raw.split(',').map(c => c.trim()).filter(c => c.length > 0);
+          
+          document.getElementById('ui-userName').innerText = USER_NAME;
+          document.getElementById('ui-userRole').innerText = USER_ROLE;
+      }
+
+      function forceReload() {
+          localStorage.removeItem('trip_user_' + USER_ID); // Чистим кэш
+          localStorage.removeItem('trip_depts');
+          location.reload();
+      }
+
+      function initApp() {
+        const nav = document.getElementById('pills-tab');
+        // Если меню уже есть, не перерисовываем его (чтобы не моргало при фоновом обновлении)
+        if (nav.innerHTML.trim() === "") {
+            if (USER_ROLE === 'Адмін') {
+              nav.innerHTML = `
+                <li class="nav-item"><a class="nav-link active" onclick="loadApproverPending()">⚡ Погодити</a></li>
+                <li class="nav-item"><a class="nav-link" onclick="loadUserHistory()">📂 Мої</a></li>
+                <li class="nav-item"><a class="nav-link" onclick="loadUserCreate()">➕ Створити</a></li>
+              `;
+              loadApproverPending();
+            } else {
+              nav.innerHTML = `
+                <li class="nav-item"><a class="nav-link active" onclick="loadUserCreate()">➕ Створити</a></li>
+                <li class="nav-item"><a class="nav-link" onclick="loadUserHistory()">📋 Історія</a></li>
+              `;
+              loadUserCreate();
+            }
+        }
+      }
+
+      function refreshTab() {
+        if(CURRENT_VIEW === 'create') loadUserCreate();
+        else if(CURRENT_VIEW === 'history') loadUserHistory();
+        else if(CURRENT_VIEW === 'pending') loadApproverPending();
+      }
+
+      function setActiveTab(idx) {
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        const target = document.querySelectorAll('.nav-link')[idx];
+        if(target) target.classList.add('active');
+      }
+
+      async function sendPost(action, data) {
+         const response = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: action, ...data })
+         });
+         return await response.json();
+      }
+
+      // === CREATE FORM ===
+      function loadUserCreate() {
+        CURRENT_VIEW = 'create';
+        const tabIdx = USER_ROLE === 'Адмін' ? 2 : 0;
+        setActiveTab(tabIdx);
+
+        const deptOpts = DEPARTMENTS.map(d => `<option value="${d}">${d}</option>`).join('');
+        let companyOpts = MY_COMPANIES.length > 0 
+           ? MY_COMPANIES.map(c => `<option value="${c}">${c}</option>`).join('')
+           : `<option disabled selected>Немає доступу до компаній</option>`;
+
+        const today = new Date().toISOString().split('T')[0];
+
+        document.getElementById('appContent').innerHTML = `
+          <div class="card p-4 shadow-sm animate__animated animate__fadeIn">
+            <form id="tripForm" onsubmit="submitRequest(event)">
+              <div class="mb-3"><label class="small text-muted fw-bold">Компанія</label><select class="form-select fw-bold" name="company" required>${companyOpts}</select></div>
+              <div class="mb-3"><label class="small text-muted fw-bold">Відділ</label><select class="form-select" name="department" required><option value="" disabled selected>Оберіть відділ...</option>${deptOpts}</select></div>
+              <div class="mb-3"><label class="small text-muted fw-bold">Мета відрядження</label><input type="text" class="form-control" name="purpose" placeholder="Напр: Тренінг, Виставка..." required></div>
+              <div class="row g-2 mb-3">
+                <div class="col-6"><label class="small text-muted fw-bold">Дата початку</label><input type="date" class="form-control" name="dateStart" id="dStart" min="${today}" onchange="calcTotal()" required></div>
+                <div class="col-6"><label class="small text-muted fw-bold">Дата кінця</label><input type="date" class="form-control" name="dateEnd" id="dEnd" min="${today}" onchange="calcTotal()" required></div>
+              </div>
+              <div class="mb-3">
+                <label class="small text-muted fw-bold">Транспорт</label>
+                <select class="form-select mb-2" name="transportType" required><option value="Поїзд">Поїзд</option><option value="Авто (Бензин)">Авто (Бензин)</option><option value="Автобус">Автобус</option><option value="Літак">Літак</option></select>
+                <input type="number" class="form-control" name="transportCost" id="tCost" placeholder="Вартість квитків (грн)" oninput="calcTotal()" required>
+              </div>
+              <div class="row g-2 mb-3">
+                 <div class="col-6"><label class="small text-muted fw-bold">Людей</label><input type="number" class="form-control" name="peopleCount" id="pCount" value="1" min="1" oninput="calcTotal()" required></div>
+                 <div class="col-6"><label class="small text-muted fw-bold">Оплата</label><select class="form-select" name="paymentMethod"><option value="Карта">💳 На карту</option><option value="Готівка">💵 Готівка</option></select></div>
+              </div>
+              <div class="total-box mb-3">
+                <div class="d-flex justify-content-between mb-1"><small class="text-muted">Добові (700 ₴):</small><small class="fw-bold" id="calcDaily">0 ₴</small></div>
+                <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2"><span class="fw-bold text-dark">ВСЬОГО:</span><span class="fs-5 fw-bold text-primary" id="calcTotal">0 ₴</span></div>
+              </div>
+              <button type="submit" id="btnSubmit" class="btn btn-primary w-100 py-3 rounded-pill fw-bold shadow">Створити заявку</button>
+            </form>
+          </div>`;
+      }
+
+      function calcTotal() {
+        const dS = document.getElementById('dStart').value;
+        const dE = document.getElementById('dEnd').value;
+        const cost = parseFloat(document.getElementById('tCost').value) || 0;
+        const people = parseInt(document.getElementById('pCount').value) || 1;
+
+        if(dS && dE) {
+          const start = new Date(dS);
+          const end = new Date(dE);
+          if (start > end) {
+             document.getElementById('calcDaily').innerText = '-';
+             document.getElementById('calcTotal').innerText = '-';
+             return;
+          }
+          const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1; 
+          const dailySum = diffDays * 700 * people;
+          document.getElementById('calcDaily').innerText = dailySum.toLocaleString() + ' ₴';
+          document.getElementById('calcTotal').innerText = (dailySum + cost).toLocaleString() + ' ₴';
+        }
+      }
+
+      async function submitRequest(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSubmit');
+        const form = document.getElementById('tripForm');
+        
+        if (MY_COMPANIES.length === 0) { showToast("Немає доступу до компаній"); return; }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        const data = {
+           userId: USER_ID, userName: USER_NAME,
+           company: form.company.value, department: form.department.value, purpose: form.purpose.value,
+           dateStart: form.dateStart.value, dateEnd: form.dateEnd.value,
+           transportType: form.transportType.value, transportCost: form.transportCost.value,
+           peopleCount: form.peopleCount.value, paymentMethod: form.paymentMethod.value
+        };
+
+        try {
+           const res = await sendPost('createRequest', { data });
+           if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+           else { showToast("Помилка: " + res.message); btn.disabled = false; btn.innerHTML = 'Створити заявку'; }
+        } catch(err) { showToast("Помилка: " + err); btn.disabled = false; btn.innerHTML = 'Створити заявку'; }
+      }
+
+      async function loadUserHistory() {
+        CURRENT_VIEW = 'history';
+        const tabIdx = USER_ROLE === 'Адмін' ? 1 : 1;
+        setActiveTab(tabIdx);
+        document.getElementById('appContent').innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-secondary"></div></div>';
+
+        const res = await fetch(`${API_URL}?action=getUserRequests&userId=${USER_ID}`);
+        const data = await res.json();
+        
+        if(data.length === 0) { document.getElementById('appContent').innerHTML = '<div class="text-center text-muted mt-5">Історія порожня</div>'; return; }
+        document.getElementById('appContent').innerHTML = data.map(item => renderCard(item, false)).join('');
+      }
+
+      async function loadApproverPending() {
+        CURRENT_VIEW = 'pending';
+        setActiveTab(0);
+        document.getElementById('appContent').innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary"></div></div>';
+
+        const res = await fetch(`${API_URL}?action=getPendingRequests&userId=${USER_ID}`);
+        const data = await res.json();
+        
+        if(data.length === 0) { document.getElementById('appContent').innerHTML = '<div class="text-center text-muted mt-5">Немає заявок</div>'; return; }
+        document.getElementById('appContent').innerHTML = data.map(item => renderCard(item, true)).join('');
+      }
+
+      async function makeDecision(reqId, decision) {
+         if(!confirm(decision === 'approve' ? "Погодити?" : "Відхилити?")) return;
+         const card = document.getElementById(`card-${reqId}`);
+         if(card) card.style.opacity = '0.5';
+
+         try {
+            const res = await sendPost('approveRequest', { rowId: reqId, approver: USER_NAME, decision: decision });
+            if(res.status === 'success') { showToast(res.message); loadApproverPending(); }
+            else { showToast(res.message); if(card) card.style.opacity = '1'; }
+         } catch(err) { showToast("Помилка: "+err); if(card) card.style.opacity = '1'; }
+      }
+
+      function renderCard(item, isApprover) {
+        let borderClass = 'marker-gray';
+        if(item.company.includes('Blue Bird')) borderClass = 'marker-blue';
+        if(item.company.includes('Flash')) borderClass = 'marker-flash';
+        if(item.company.includes('ПрофіСтрой')) borderClass = 'marker-profi';
+
+        const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost);
+        const cardId = `card-${item.reqId}`;
+
+        let footerHtml = '';
+        if(isApprover) {
+          footerHtml = `
+            <div class="d-flex gap-2 mt-3 pt-2 border-top">
+                <button class="btn btn-outline-danger flex-grow-1" onclick="makeDecision('${item.reqId}', 'reject')">Відхилити</button>
+                <button class="btn btn-success flex-grow-1" onclick="makeDecision('${item.reqId}', 'approve')">Погодити</button>
+            </div>`;
+        } else {
+             if(item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
+             if(item.status === 'Відхилено') footerHtml = `<div class="mt-2 text-danger small text-end fw-bold"><i class="bi bi-x-circle"></i> Відхилив: ${item.approver}</div>`;
+        }
+
+        return `
+          <div class="card p-3 ${borderClass}" id="${cardId}">
+             <div class="d-flex justify-content-between mb-2"><span class="badge bg-light text-dark border">${item.company}</span>${getStatusBadge(item.status)}</div>
+             ${isApprover ? `<h6 class="fw-bold mb-0">${item.userName}</h6><small class="text-muted mb-2 d-block">${item.dept}</small>` : ''}
+             <div class="fw-bold fs-5 mb-1">${item.purpose}</div>
+             <div class="text-muted small mb-2"><i class="bi bi-calendar"></i> ${item.dStart} — ${item.dEnd}</div>
+             <div class="bg-light rounded p-2 small">
+                <div class="d-flex justify-content-between"><span>Транспорт:</span> <strong>${item.transType} (${item.transCost})</strong></div>
+                <div class="d-flex justify-content-between"><span>Добові (${item.people} чол):</span> <strong>${item.dailyTotal}</strong></div>
+                <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold text-dark"><span>РАЗОМ:</span> <span>${totalSum} ₴</span></div>
+             </div>
+             ${footerHtml}
+          </div>`;
+      }
+
+      function showToast(msg) { document.getElementById('toastMessage').innerText = msg; toastInstance.show(); }
+      function getStatusBadge(s) {
+        if(s === 'Нова') return '<span class="badge-status st-new">Нова</span>';
+        if(s === 'Погоджено') return '<span class="badge-status st-approved">Погоджено</span>';
+        return '<span class="badge-status st-rejected">Відхилено</span>';
+      }
+    </script>
+  </body>
+</html>
