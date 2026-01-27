@@ -940,9 +940,9 @@
       if (item.company.includes('ПрофіСтрой')) borderClass = 'marker-profi';
       if (item.status === 'Потребує уточнення') borderClass = 'marker-clarify';
 
-      const approvedExtra = parseFloat(item.approvedExpenses || 0) || 0;
+      const approvedExtra = parseFloat(item.additionalItemsTotal || 0) || 0;
       const planTotal = parseFloat(item.planItemsTotal || 0) || 0;
-      const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost || 0) + planTotal + approvedExtra;
+      const totalSum = parseFloat(item.dailyTotal) + planTotal + approvedExtra;
       const cardId = `card-${item.reqId}`;
 
       let footerHtml = '';
@@ -981,9 +981,6 @@
       const paymentCard = item.paymentCard ? ` (${item.paymentCard})` : '';
 
       let expensesBadge = '';
-      if (item.pendingExpenses && parseInt(item.pendingExpenses) > 0) {
-        expensesBadge = `<div class="mt-2 small text-primary"><i class="bi bi-receipt"></i> Очікують витрати: ${item.pendingExpenses}</div>`;
-      }
 
       let clarifyAnswerHtml = '';
       if (!isApprover && item.status === 'Потребує уточнення') {
@@ -1013,9 +1010,7 @@
         ? `<div class="mt-2 no-modal"><button class="btn btn-outline-success w-100" onclick="completeTrip('${item.reqId}', this)">Завершити відрядження</button></div>`
         : '';
 
-      const transportLine = item.transType || item.transCost
-        ? `<div class="d-flex justify-content-between"><span>Транспорт:</span> <strong>${item.transType || ''} (${item.transCost || 0})</strong></div>`
-        : '';
+      const transportLine = '';
 
       return `
           <div class="card p-3 ${borderClass}" id="${cardId}" onclick="openDetailsModal('${item.reqId}', event)">
@@ -1138,9 +1133,9 @@
     }
 
     function renderDetailsBody(req, expenses) {
-      const approvedExtra = parseFloat(req.approvedExpenses || 0) || 0;
+      const approvedExtra = parseFloat(req.additionalItemsTotal || 0) || 0;
       const planTotal = parseFloat(req.planItemsTotal || 0) || 0;
-      const totalSum = (parseFloat(req.dailyTotal) || 0) + (parseFloat(req.transCost) || 0) + planTotal + approvedExtra;
+      const totalSum = (parseFloat(req.dailyTotal) || 0) + planTotal + approvedExtra;
       const paymentCard = req.paymentCard ? ` (${req.paymentCard})` : '';
       const edits = req.editSummary ? `<div class="mt-2"><strong>Зміни:</strong><br>${formatChangeLines(req.editSummary)}</div>` : '';
       const adminComment = req.adminComment ? `<div class="mt-2"><strong>Коментар адміна:</strong> ${req.adminComment}</div>` : '';
@@ -1166,7 +1161,6 @@
         <div class="bg-light rounded p-2 small mb-2">
           <div class="d-flex justify-content-between"><span>Користувач:</span><strong>${req.userName}</strong></div>
           <div class="d-flex justify-content-between"><span>Відділ:</span><strong>${req.dept}</strong></div>
-          ${req.transType || req.transCost ? `<div class="d-flex justify-content-between"><span>Транспорт:</span><strong>${req.transType || ''} (${req.transCost || 0})</strong></div>` : ''}
           <div class="d-flex justify-content-between"><span>Добові (${req.people} чол):</span><strong>${req.dailyTotal}</strong></div>
           <div class="d-flex justify-content-between"><span>Ставка добових:</span><strong>${req.perDiemName} (${req.perDiemRate})</strong></div>
           <div class="d-flex justify-content-between"><span>Оплата:</span><strong>${req.payment}${paymentCard}</strong></div>
