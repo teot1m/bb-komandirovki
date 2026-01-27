@@ -750,7 +750,8 @@
         const res = await sendPost('submitExpenses', { rowId: reqId, userId: USER_ID, userName: USER_NAME, expenses });
         if (res.status === 'success') {
           if (res.debug && res.debug.length) {
-            showToast(res.message + " (лог: " + res.debug.slice(-1)[0] + ")");
+            showToast(res.message);
+            showDebugPanel(res.debug);
             console.log("Drive debug:", res.debug);
           } else {
             showToast(res.message);
@@ -787,6 +788,27 @@
           delete btn.dataset.prev;
         }
       }
+    }
+
+    function showDebugPanel(lines) {
+      const containerId = 'debugPanel';
+      let panel = document.getElementById(containerId);
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = containerId;
+        panel.className = 'card p-3 mt-2';
+        panel.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>Debug (Drive)</strong>
+            <button class="btn btn-sm btn-outline-secondary" onclick="this.closest('#${containerId}').remove()">Закрити</button>
+          </div>
+          <pre class="small text-muted mb-0" style="white-space: pre-wrap;"></pre>
+        `;
+        const app = document.getElementById('appContent');
+        if (app) app.prepend(panel);
+      }
+      const pre = panel.querySelector('pre');
+      if (pre) pre.textContent = lines.join('\n');
     }
 
     async function decideExpenseBatch(reqId, expenseIds, decision, btn) {
