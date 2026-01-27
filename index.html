@@ -949,10 +949,17 @@
             </div>
           </div>
           <div class="d-flex gap-2 mt-3 pt-2 border-top no-modal">
-            <button class="btn btn-outline-danger flex-grow-1" onclick="decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'reject', this)">Відхилити</button>
-            <button class="btn btn-success flex-grow-1" onclick="decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'approve', this)">Погодити</button>
+            <button class="btn btn-outline-danger flex-grow-1" data-exp-ids='${JSON.stringify(ids)}' onclick="decideExpenseBatchFromBtn('${group.reqId}', 'reject', this)">Відхилити</button>
+            <button class="btn btn-success flex-grow-1" data-exp-ids='${JSON.stringify(ids)}' onclick="decideExpenseBatchFromBtn('${group.reqId}', 'approve', this)">Погодити</button>
           </div>
         </div>`;
+    }
+
+    function decideExpenseBatchFromBtn(reqId, decision, btn) {
+      const raw = btn ? btn.getAttribute('data-exp-ids') : '[]';
+      let ids = [];
+      try { ids = JSON.parse(raw || '[]'); } catch (e) { ids = []; }
+      decideExpenseBatch(reqId, ids, decision, btn);
     }
 
     async function openDetailsModal(reqId, ev) {
