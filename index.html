@@ -472,7 +472,7 @@
         ? USER_CARDS.map(c => `<option value="${c}">${c}</option>`).join('')
         : `<option value="" disabled selected>Немає карт</option>`;
       const rateOptions = DAILY_RATES.length
-        ? DAILY_RATES.map(r => `<option value="${r.rate}">${r.name} (${r.rate} грн)</option>`).join('')
+        ? DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('')
         : `<option value="" disabled selected>Немає ставок</option>`;
       const expenseOptions = EXPENSE_OPTIONS.length
         ? EXPENSE_OPTIONS.map(o => `<option value="${o}">${o}</option>`).join('')
@@ -492,11 +492,6 @@
               <div class="mb-3">
                 <label class="small text-muted fw-bold">Добові</label>
                 <select class="form-select" name="perDiemRate" id="perDiemRate" onchange="calcTotal()">${rateOptions}</select>
-              </div>
-              <div class="mb-3">
-                <label class="small text-muted fw-bold">Транспорт</label>
-                <select class="form-select mb-2" name="transportType" required><option value="Поїзд">Поїзд</option><option value="Авто (Бензин)">Авто (Бензин)</option><option value="Автобус">Автобус</option><option value="Літак">Літак</option></select>
-                <input type="number" class="form-control" name="transportCost" id="tCost" placeholder="Вартість квитків (грн)" oninput="calcTotal()" required>
               </div>
               <div class="mb-3">
                 <label class="small text-muted fw-bold">Планові витрати</label>
@@ -524,7 +519,7 @@
     function calcTotal() {
       const dS = document.getElementById('dStart').value;
       const dE = document.getElementById('dEnd').value;
-      const cost = parseFloat(document.getElementById('tCost').value) || 0;
+      const cost = 0;
       const people = parseInt(document.getElementById('pCount').value) || 1;
       const rate = parseFloat(document.getElementById('perDiemRate').value) || 0;
       const planTotal = calcPlanTotal();
@@ -625,7 +620,7 @@
         company: form.company.value, department: form.department.value, purpose: form.purpose.value,
         comment: form.comment.value,
         dateStart: form.dateStart.value, dateEnd: form.dateEnd.value,
-        transportType: form.transportType.value, transportCost: form.transportCost.value,
+        transportType: "", transportCost: 0,
         peopleCount: form.peopleCount.value, paymentMethod: form.paymentMethod.value,
         paymentCard: form.paymentCard ? form.paymentCard.value : "",
         perDiemRate: form.perDiemRate.value,
@@ -947,7 +942,7 @@
 
       const approvedExtra = parseFloat(item.approvedExpenses || 0) || 0;
       const planTotal = parseFloat(item.planItemsTotal || 0) || 0;
-      const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost) + planTotal + approvedExtra;
+      const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost || 0) + planTotal + approvedExtra;
       const cardId = `card-${item.reqId}`;
 
       let footerHtml = '';
@@ -1018,6 +1013,10 @@
         ? `<div class="mt-2 no-modal"><button class="btn btn-outline-success w-100" onclick="completeTrip('${item.reqId}', this)">Завершити відрядження</button></div>`
         : '';
 
+      const transportLine = item.transType || item.transCost
+        ? `<div class="d-flex justify-content-between"><span>Транспорт:</span> <strong>${item.transType || ''} (${item.transCost || 0})</strong></div>`
+        : '';
+
       return `
           <div class="card p-3 ${borderClass}" id="${cardId}" onclick="openDetailsModal('${item.reqId}', event)">
              <div class="d-flex justify-content-between mb-2"><span class="badge bg-light text-dark border">${item.company}</span>${getStatusBadge(item.status)}</div>
@@ -1025,7 +1024,7 @@
              <div class="fw-bold fs-5 mb-1">${item.purpose}</div>
              <div class="text-muted small mb-2"><i class="bi bi-calendar"></i> ${item.dStart} — ${item.dEnd}</div>
              <div class="bg-light rounded p-2 small">
-                <div class="d-flex justify-content-between"><span>Транспорт:</span> <strong>${item.transType} (${item.transCost})</strong></div>
+                ${transportLine}
                 <div class="d-flex justify-content-between"><span>Добові (${item.people} чол):</span> <strong>${item.dailyTotal}</strong></div>
                 <div class="d-flex justify-content-between"><span>Планові витрати:</span> <strong>${planTotal}</strong></div>
                 <div class="d-flex justify-content-between"><span>Підтверджені витрати:</span> <strong>${approvedExtra}</strong></div>
@@ -1167,7 +1166,7 @@
         <div class="bg-light rounded p-2 small mb-2">
           <div class="d-flex justify-content-between"><span>Користувач:</span><strong>${req.userName}</strong></div>
           <div class="d-flex justify-content-between"><span>Відділ:</span><strong>${req.dept}</strong></div>
-          <div class="d-flex justify-content-between"><span>Транспорт:</span><strong>${req.transType} (${req.transCost})</strong></div>
+          ${req.transType || req.transCost ? `<div class="d-flex justify-content-between"><span>Транспорт:</span><strong>${req.transType || ''} (${req.transCost || 0})</strong></div>` : ''}
           <div class="d-flex justify-content-between"><span>Добові (${req.people} чол):</span><strong>${req.dailyTotal}</strong></div>
           <div class="d-flex justify-content-between"><span>Ставка добових:</span><strong>${req.perDiemName} (${req.perDiemRate})</strong></div>
           <div class="d-flex justify-content-between"><span>Оплата:</span><strong>${req.payment}${paymentCard}</strong></div>
