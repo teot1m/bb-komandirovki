@@ -748,7 +748,15 @@
       setBtnLoading(btn, true);
       try {
         const res = await sendPost('submitExpenses', { rowId: reqId, userId: USER_ID, userName: USER_NAME, expenses });
-        if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+        if (res.status === 'success') {
+          if (res.debug && res.debug.length) {
+            showToast(res.message + " (лог: " + res.debug.slice(-1)[0] + ")");
+            console.log("Drive debug:", res.debug);
+          } else {
+            showToast(res.message);
+          }
+          loadUserHistory();
+        }
         else showToast(res.message);
       } catch (err) { showToast("Помилка: " + err); }
       setBtnLoading(btn, false);
