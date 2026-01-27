@@ -244,16 +244,6 @@
           </div>
           <div class="row g-2 mb-2">
             <div class="col-6">
-              <label class="small text-muted fw-bold">Транспорт</label>
-              <input type="text" class="form-control" id="editTransType">
-            </div>
-            <div class="col-6">
-              <label class="small text-muted fw-bold">Вартість транспорту</label>
-              <input type="number" class="form-control" id="editTransCost">
-            </div>
-          </div>
-          <div class="row g-2 mb-2">
-            <div class="col-6">
               <label class="small text-muted fw-bold">Людей</label>
               <input type="number" class="form-control" id="editPeople">
             </div>
@@ -261,6 +251,15 @@
               <label class="small text-muted fw-bold">Оплата</label>
               <input type="text" class="form-control" id="editPayment">
             </div>
+          </div>
+          <div class="mb-2">
+            <label class="small text-muted fw-bold">Ставка добових</label>
+            <select class="form-select" id="editPerDiemRate"></select>
+          </div>
+          <div class="mb-2">
+            <label class="small text-muted fw-bold">Планові витрати</label>
+            <div id="editPlanRows"></div>
+            <button type="button" class="btn btn-light w-100 mt-2" onclick="addPlanRowTo('editPlanRows')">+ Додати витрату</button>
           </div>
           <div class="mb-2">
             <label class="small text-muted fw-bold">Карта (за потреби)</label>
@@ -567,7 +566,11 @@
     }
 
     function addPlanRow() {
-      const container = document.getElementById('planRows');
+      addPlanRowTo('planRows');
+    }
+
+    function addPlanRowTo(containerId, preset) {
+      const container = document.getElementById(containerId);
       if (!container) return;
       const optionsHtml = EXPENSE_OPTIONS.map(o => `<option value="${o}">${o}</option>`).join('');
       const row = document.createElement('div');
@@ -584,6 +587,19 @@
         <input type="number" class="form-control" data-plan-amount placeholder="Сума" oninput="calcTotal()">
       `;
       container.appendChild(row);
+      if (preset) {
+        const sel = row.querySelector('[data-plan-name]');
+        const custom = row.querySelector('[data-plan-custom]');
+        const amt = row.querySelector('[data-plan-amount]');
+        if (EXPENSE_OPTIONS.includes(preset.name)) {
+          sel.value = preset.name;
+        } else {
+          sel.value = 'Інше';
+          custom.classList.remove('d-none');
+          custom.value = preset.name;
+        }
+        amt.value = preset.amount || '';
+      }
       calcTotal();
     }
 
@@ -630,6 +646,12 @@
 
       if (data.paymentMethod === 'Карта' && !data.paymentCard) {
         showToast("Оберіть карту для зарахування");
+        btn.disabled = false;
+        btn.innerHTML = 'Створити заявку';
+        return;
+      }
+      if (!data.perDiemRate) {
+        showToast("Оберіть ставку добових");
         btn.disabled = false;
         btn.innerHTML = 'Створити заявку';
         return;
@@ -730,12 +752,18 @@
       document.getElementById('editPurpose').value = item.purpose || '';
       document.getElementById('editStart').value = item.dStart || '';
       document.getElementById('editEnd').value = item.dEnd || '';
-      document.getElementById('editTransType').value = item.transType || '';
-      document.getElementById('editTransCost').value = item.transCost || 0;
       document.getElementById('editPeople').value = item.people || 1;
       document.getElementById('editPayment').value = item.payment || '';
       document.getElementById('editCard').value = item.paymentCard || '';
       document.getElementById('editAdminComment').value = '';
+      const rateSel = document.getElementById('editPerDiemRate');
+      rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
+      rateSel.value = item.perDiemRate || '';
+      const planContainer = document.getElementById('editPlanRows');
+      planContainer.innerHTML = '';
+      const planItems = parsePlanItems(item.planItemsJson);
+      if (planItems.length === 0) addPlanRowTo('editPlanRows');
+      else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
       editModalInstance.show();
     }
 
@@ -750,12 +778,14 @@
         purpose: document.getElementById('editPurpose').value,
         dateStart: document.getElementById('editStart').value,
         dateEnd: document.getElementById('editEnd').value,
-        transportType: document.getElementById('editTransType').value,
-        transportCost: document.getElementById('editTransCost').value,
         peopleCount: document.getElementById('editPeople').value,
         paymentMethod: document.getElementById('editPayment').value,
         paymentCard: document.getElementById('editCard').value,
-        adminComment: adminCommentVal
+        adminComment: adminCommentVal,
+        perDiemRate: document.getElementById('editPerDiemRate').value,
+        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(document.getElementById('editPerDiemRate').value)) || {}).name || "",
+        planItemsJson: JSON.stringify(collectPlanItemsFrom('editPlanRows')),
+        planItemsTotal: collectPlanItemsFrom('editPlanRows').reduce((s, i) => s + (Number(i.amount) || 0), 0)
       };
       try {
         const res = await sendPost('updateAndApproveRequest', { rowId: reqId, approver: USER_NAME, approverId: USER_ID, data });
@@ -884,7 +914,11 @@
     }
 
     function collectPlanItems() {
-      const rows = document.querySelectorAll('#planRows .plan-row');
+      return collectPlanItemsFrom('planRows');
+    }
+
+    function collectPlanItemsFrom(containerId) {
+      const rows = document.querySelectorAll(`#${containerId} .plan-row`);
       const items = [];
       rows.forEach(r => {
         const nameSelect = r.querySelector('[data-plan-name]').value;
@@ -1140,6 +1174,8 @@
       const edits = req.editSummary ? `<div class="mt-2"><strong>Зміни:</strong><br>${formatChangeLines(req.editSummary)}</div>` : '';
       const adminComment = req.adminComment ? `<div class="mt-2"><strong>Коментар адміна:</strong> ${req.adminComment}</div>` : '';
       const userComment = req.userComment ? `<div class="mt-2"><strong>Коментар:</strong> ${req.userComment}</div>` : '';
+      const tgError = getLastLogText(req.logEntries || [], 'telegram_error');
+      const tgErrorHtml = tgError ? `<div class="mt-2 text-danger"><strong>Telegram:</strong> ${tgError}</div>` : '';
       const clarify = req.clarifyQuestion ? `
         <div class="mt-2"><strong>Уточнення:</strong> ${req.clarifyQuestion}</div>
         ${req.clarifyAnswer ? `<div class="mt-1"><strong>Відповідь:</strong> ${req.clarifyAnswer}</div>` : ''}
@@ -1179,6 +1215,7 @@
         ${adminComment}
         ${edits}
         ${clarify}
+        ${tgErrorHtml}
         <div class="mt-3">
           <div class="fw-bold mb-1">Планові витрати</div>
           ${planHtml}
@@ -1267,6 +1304,14 @@
         if (Array.isArray(arr)) return arr;
       } catch (e) {}
       return [];
+    }
+
+    function getLastLogText(entries, type) {
+      if (!entries || !entries.length) return '';
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].type === type) return entries[i].text || '';
+      }
+      return '';
     }
 
     function canCompleteTrip(item) {
