@@ -199,7 +199,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-light" data-bs-dismiss="modal">Скасувати</button>
-          <button class="btn btn-warning text-dark" onclick="submitClarifyRequest()">Відправити</button>
+          <button class="btn btn-warning text-dark" id="clarifySubmitBtn" onclick="submitClarifyRequest(this)">Відправити</button>
         </div>
       </div>
     </div>
@@ -268,7 +268,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-light" data-bs-dismiss="modal">Скасувати</button>
-          <button class="btn btn-success" onclick="submitEditApprove()">Погодити</button>
+          <button class="btn btn-success" id="editApproveBtn" onclick="submitEditApprove(this)">Погодити</button>
         </div>
       </div>
     </div>
@@ -595,16 +595,18 @@
       document.getElementById('appContent').innerHTML = html;
       }
 
-    async function makeDecision(reqId, decision) {
+    async function makeDecision(reqId, decision, btn) {
       if (!confirm(decision === 'approve' ? "Погодити?" : "Відхилити?")) return;
       const card = document.getElementById(`card-${reqId}`);
       if (card) card.style.opacity = '0.5';
+      setBtnLoading(btn, true);
 
       try {
         const res = await sendPost('approveRequest', { rowId: reqId, approver: USER_NAME, approverId: USER_ID, decision: decision });
         if (res.status === 'success') { showToast(res.message); loadApproverPending(); }
         else { showToast(res.message); if (card) card.style.opacity = '1'; }
       } catch (err) { showToast("Помилка: " + err); if (card) card.style.opacity = '1'; }
+      setBtnLoading(btn, false);
     }
 
     function openClarifyModal(reqId) {
@@ -613,15 +615,17 @@
       clarifyModalInstance.show();
     }
 
-    async function submitClarifyRequest() {
+    async function submitClarifyRequest(btn) {
       const reqId = document.getElementById('clarifyReqId').value;
       const text = document.getElementById('clarifyText').value.trim();
       if (!text) { showToast("Вкажіть уточнення"); return; }
+      setBtnLoading(btn, true);
       try {
         const res = await sendPost('requestClarification', { rowId: reqId, adminId: USER_ID, adminName: USER_NAME, question: text });
         if (res.status === 'success') { showToast(res.message); clarifyModalInstance.hide(); loadApproverPending(); }
         else showToast(res.message);
       } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
     }
 
     function openEditModal(reqId) {
@@ -642,10 +646,11 @@
       editModalInstance.show();
     }
 
-    async function submitEditApprove() {
+    async function submitEditApprove(btn) {
       const reqId = document.getElementById('editReqId').value;
       const adminCommentVal = document.getElementById('editAdminComment').value.trim();
       if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
+      setBtnLoading(btn, true);
       const data = {
         company: document.getElementById('editCompany').value,
         department: document.getElementById('editDept').value,
@@ -664,18 +669,21 @@
         if (res.status === 'success') { showToast(res.message); editModalInstance.hide(); loadApproverPending(); }
         else showToast(res.message);
       } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
     }
 
-    async function submitClarificationAnswer(reqId) {
+    async function submitClarificationAnswer(reqId, btn) {
       const input = document.getElementById(`clarify-answer-${reqId}`);
       if (!input) return;
       const text = input.value.trim();
       if (!text) { showToast("Вкажіть відповідь"); return; }
+      setBtnLoading(btn, true);
       try {
         const res = await sendPost('submitClarificationAnswer', { rowId: reqId, userId: USER_ID, answer: text });
         if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
         else showToast(res.message);
       } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
     }
 
     function toggleExpensesForm(reqId) {
@@ -694,6 +702,10 @@
       const row = document.createElement('div');
       row.className = 'expense-form mb-2';
       row.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong class="small text-muted">Витрата ${idx}</strong>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeExpenseRow(this); event.stopPropagation();">✕</button>
+          </div>
           <div class="mb-2"><input type="text" class="form-control" placeholder="Назва витрати" data-exp-name required></div>
           <div class="mb-2"><input type="number" class="form-control" placeholder="Сума" data-exp-amount required></div>
           <div class="mb-2"><input type="text" class="form-control" placeholder="Опис (необов'язково)" data-exp-desc></div>
@@ -703,7 +715,12 @@
       container.appendChild(row);
     }
 
-    async function submitExpenses(reqId) {
+    function removeExpenseRow(btn) {
+      const row = btn.closest('.expense-form');
+      if (row) row.remove();
+    }
+
+    async function submitExpenses(reqId, btn) {
       const container = document.getElementById(`exp-rows-${reqId}`);
       if (!container) return;
       const rows = Array.from(container.children);
@@ -728,11 +745,13 @@
         expenses.push({ name, amount, description, link, files });
       }
 
+      setBtnLoading(btn, true);
       try {
         const res = await sendPost('submitExpenses', { rowId: reqId, userId: USER_ID, userName: USER_NAME, expenses });
         if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
         else showToast(res.message);
       } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
     }
 
     function readFileAsBase64(file) {
@@ -747,16 +766,33 @@
       });
     }
 
-    async function decideExpenseBatch(reqId, expenseIds, decision) {
+    function setBtnLoading(btn, loading) {
+      if (!btn) return;
+      if (loading) {
+        if (!btn.dataset.prev) btn.dataset.prev = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.prev) {
+          btn.innerHTML = btn.dataset.prev;
+          delete btn.dataset.prev;
+        }
+      }
+    }
+
+    async function decideExpenseBatch(reqId, expenseIds, decision, btn) {
       if (!expenseIds || expenseIds.length === 0) return;
       if (!confirm(decision === 'approve' ? "Погодити всі витрати?" : "Відхилити всі витрати?")) return;
       const card = document.getElementById(`exp-group-${reqId}`);
       if (card) card.style.opacity = '0.5';
+      setBtnLoading(btn, true);
       try {
         const res = await sendPost('decideExpensesBatch', { expenseIds, approver: USER_NAME, decision });
         if (res.status === 'success') { showToast(res.message); loadApproverPending(); }
         else { showToast(res.message); if (card) card.style.opacity = '1'; }
       } catch (err) { showToast("Помилка: " + err); if (card) card.style.opacity = '1'; }
+      setBtnLoading(btn, false);
     }
 
     function renderCard(item, isApprover) {
@@ -774,8 +810,8 @@
       if (isActionable) {
         footerHtml = `
             <div class="d-flex gap-2 mt-3 pt-2 border-top">
-                <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'reject')">Відхилити</button>
-                <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'approve')">Погодити</button>
+                <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'reject', this)">Відхилити</button>
+                <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); makeDecision('${item.reqId}', 'approve', this)">Погодити</button>
             </div>`;
         footerHtml += `
             <div class="d-flex gap-2 mt-2">
@@ -814,7 +850,7 @@
         clarifyAnswerHtml = `
             <div class="mt-2" onclick="event.stopPropagation()">
               <textarea class="form-control mb-2" id="clarify-answer-${item.reqId}" rows="2" placeholder="Ваша відповідь..."></textarea>
-              <button class="btn btn-warning w-100" onclick="event.stopPropagation(); submitClarificationAnswer('${item.reqId}')">Відправити уточнення</button>
+              <button class="btn btn-warning w-100" onclick="event.stopPropagation(); submitClarificationAnswer('${item.reqId}', this)">Відправити уточнення</button>
             </div>`;
       }
 
@@ -827,7 +863,7 @@
                 <div id="exp-rows-${item.reqId}"></div>
                 <div class="d-flex gap-2">
                   <button class="btn btn-light flex-grow-1" onclick="event.stopPropagation(); addExpenseRow('${item.reqId}')">+ Додати ще</button>
-                  <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); submitExpenses('${item.reqId}')">Відправити</button>
+                  <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); submitExpenses('${item.reqId}', this)">Відправити</button>
                 </div>
               </div>
             </div>`;
@@ -913,8 +949,8 @@
             </div>
           </div>
           <div class="d-flex gap-2 mt-3 pt-2 border-top">
-            <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'reject')">Відхилити</button>
-            <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'approve')">Погодити</button>
+            <button class="btn btn-outline-danger flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'reject', this)">Відхилити</button>
+            <button class="btn btn-success flex-grow-1" onclick="event.stopPropagation(); decideExpenseBatch('${group.reqId}', ${JSON.stringify(ids)}, 'approve', this)">Погодити</button>
           </div>
         </div>`;
     }
@@ -942,7 +978,7 @@
     function renderDetailsBody(req, expenses) {
       const totalSum = (parseFloat(req.dailyTotal) || 0) + (parseFloat(req.transCost) || 0);
       const paymentCard = req.paymentCard ? ` (${req.paymentCard})` : '';
-      const edits = req.editSummary ? `<div class="mt-2"><strong>Зміни:</strong> ${req.editSummary}</div>` : '';
+      const edits = req.editSummary ? `<div class="mt-2"><strong>Зміни:</strong><br>${formatChangeLines(req.editSummary)}</div>` : '';
       const adminComment = req.adminComment ? `<div class="mt-2"><strong>Коментар адміна:</strong> ${req.adminComment}</div>` : '';
       const userComment = req.userComment ? `<div class="mt-2"><strong>Коментар:</strong> ${req.userComment}</div>` : '';
       const clarify = req.clarifyQuestion ? `
@@ -951,26 +987,13 @@
         ${req.clarifyByName ? `<div class="mt-1"><strong>Запросив:</strong> ${req.clarifyByName}</div>` : ''}
       ` : '';
 
-      const expensesHtml = (expenses && expenses.length > 0)
-        ? expenses.map(e => {
-            const files = e.fileUrls ? e.fileUrls.split(',').filter(Boolean).map(u => `<a href="${u.trim()}" target="_blank">файл</a>`).join(', ') : '';
-            return `
-              <div class="border rounded p-2 mb-2">
-                <div class="d-flex justify-content-between"><strong>${e.name}</strong><span>${e.amount}</span></div>
-                ${e.description ? `<div class="small text-muted">${e.description}</div>` : ''}
-                ${e.link ? `<div class="small"><a href="${e.link}" target="_blank">${e.link}</a></div>` : ''}
-                ${files ? `<div class="small">Файли: ${files}</div>` : ''}
-                <div class="small text-muted">Статус: ${e.status}${e.approver ? ` • ${e.approver}` : ''}${e.decidedAt ? ` • ${e.decidedAt}` : ''}</div>
-              </div>
-            `;
-          }).join('')
-        : '<div class="text-muted small">Немає витрат</div>';
+      const expensesHtml = renderExpensesGroupedByDate(expenses);
 
       return `
         <div class="mb-2">
           <div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${req.company}</span>${getStatusBadge(req.status)}</div>
           <div class="fw-bold">${req.purpose}</div>
-          <div class="small text-muted">${req.dStart} — ${req.dEnd}</div>
+          <div class="small text-muted">${formatDate(req.dStart)} — ${formatDate(req.dEnd)}</div>
         </div>
         <div class="bg-light rounded p-2 small mb-2">
           <div class="d-flex justify-content-between"><span>Користувач:</span><strong>${req.userName}</strong></div>
@@ -981,8 +1004,8 @@
           <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold"><span>РАЗОМ:</span><span>${totalSum} ₴</span></div>
         </div>
         <div class="small text-muted">
-          <div>Створено: ${req.created}</div>
-          ${req.updatedAt ? `<div>Оновлено: ${req.updatedAt}</div>` : ''}
+          <div>Створено: ${formatDateTime(req.created)}</div>
+          ${req.updatedAt ? `<div>Оновлено: ${formatDateTime(req.updatedAt)}</div>` : ''}
           ${req.editedBy ? `<div>Редактор: ${req.editedBy}</div>` : ''}
           ${req.approver ? `<div>Погодив: ${req.approver}</div>` : ''}
         </div>
@@ -995,6 +1018,76 @@
           ${expensesHtml}
         </div>
       `;
+    }
+
+    function formatChangeLines(summary) {
+      return summary.split(';').map(s => s.trim()).filter(Boolean).map(s => `${s};`).join('<br>');
+    }
+
+    function formatDate(val) {
+      if (!val) return '';
+      const s = String(val);
+      if (s.includes('T')) {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear();
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, d] = s.split('-');
+        return `${d}.${m}.${y}`;
+      }
+      if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) return s.slice(0, 10);
+      return s;
+    }
+
+    function formatDateTime(val) {
+      if (!val) return '';
+      const s = String(val);
+      if (s.includes('T')) {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+          return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        }
+      }
+      if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) return s;
+      return s;
+    }
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function renderExpensesGroupedByDate(expenses) {
+      if (!expenses || expenses.length === 0) return '<div class="text-muted small">Немає витрат</div>';
+      const groups = {};
+      expenses.forEach(e => {
+        const key = formatDate(e.created);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(e);
+      });
+      const dates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+      return dates.map(date => {
+        const itemsHtml = groups[date].map(e => {
+          const files = e.fileUrls ? e.fileUrls.split(',').filter(Boolean).map(u => `<a href="${u.trim()}" target="_blank">файл</a>`).join(', ') : '';
+          const statusLine = [
+            e.status || '',
+            e.approver || '',
+            e.decidedAt ? formatDateTime(e.decidedAt) : ''
+          ].filter(Boolean).join(' • ');
+          return `
+            <div class="border rounded p-2 mb-2">
+              <div class="d-flex justify-content-between"><strong>${e.name}</strong><span>${e.amount}</span></div>
+              ${e.description ? `<div class="small text-muted">${e.description}</div>` : ''}
+              ${e.link ? `<div class="small"><a href="${e.link}" target="_blank">${e.link}</a></div>` : ''}
+              ${files ? `<div class="small">Файли: ${files}</div>` : ''}
+              <div class="small text-muted">${statusLine ? `Статус: ${statusLine}` : ''}</div>
+            </div>
+          `;
+        }).join('');
+        return `
+          <div class="mb-2">
+            <div class="small text-muted fw-bold mb-1">${date}</div>
+            ${itemsHtml}
+          </div>
+        `;
+      }).join('');
     }
   </script>
 </body>
