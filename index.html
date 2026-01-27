@@ -676,8 +676,34 @@
       if (data.length === 0) { document.getElementById('appContent').innerHTML = '<div class="text-center text-muted mt-5">Історія порожня</div>'; return; }
       REQUEST_CACHE = {};
       DETAILS_EXPENSE_CACHE = {};
-      data.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
-      document.getElementById('appContent').innerHTML = data.map(item => renderCard(item, false)).join('');
+      const sorted = data.slice().sort((a, b) => {
+        const aActive = isActiveStatus(a.status) ? 0 : 1;
+        const bActive = isActiveStatus(b.status) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return compareDateAsc(a.dStart, b.dStart);
+      });
+      sorted.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
+
+      const active = sorted.filter(i => i.status !== 'Завершено');
+      const completed = sorted.filter(i => i.status === 'Завершено');
+
+      let html = '';
+      html += active.map(item => renderCard(item, false)).join('');
+      if (completed.length > 0) {
+        const collapsed = localStorage.getItem('trip_completed_collapsed') !== '0';
+        html += `
+          <div class="card p-3 mt-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>Завершені відрядження (${completed.length})</strong>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleCompleted()">Показати/Сховати</button>
+            </div>
+            <div id="completedBlock" class="${collapsed ? 'd-none' : ''} mt-2">
+              ${completed.map(item => renderCard(item, false)).join('')}
+            </div>
+          </div>
+        `;
+      }
+      document.getElementById('appContent').innerHTML = html;
     }
 
       async function loadApproverPending() {
@@ -695,16 +721,22 @@
       REQUEST_CACHE = {};
       EXPENSE_CACHE = {};
       DETAILS_EXPENSE_CACHE = {};
-      data.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
+      const sortedReq = data.slice().sort((a, b) => {
+        const aActive = isActionableStatus(a.status) ? 0 : 1;
+        const bActive = isActionableStatus(b.status) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return String(b.created).localeCompare(String(a.created));
+      });
+      sortedReq.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
 
       let html = '';
-      if (data.length > 0) {
-        html += `<div class="fw-bold text-muted mb-2">Заявки</div>`;
-        html += data.map(item => renderCard(item, true)).join('');
-      }
       if (expensesGrouped.length > 0) {
-        html += `<div class="fw-bold text-muted mt-4 mb-2">Витрати на затвердження</div>`;
+        html += `<div class="fw-bold text-muted mb-2">Витрати на затвердження</div>`;
         html += expensesGrouped.map(item => renderExpenseGroupCard(item)).join('');
+      }
+      if (sortedReq.length > 0) {
+        html += `<div class="fw-bold text-muted ${expensesGrouped.length ? 'mt-4' : ''} mb-2">Заявки</div>`;
+        html += sortedReq.map(item => renderCard(item, true)).join('');
       }
       if (!html) html = '<div class="text-center text-muted mt-5">Немає заявок</div>';
       document.getElementById('appContent').innerHTML = html;
@@ -1316,8 +1348,44 @@
 
     function canCompleteTrip(item) {
       if (!item || !item.dEnd) return false;
-      const today = new Date().toISOString().split('T')[0];
-      return String(item.dEnd) <= today;
+      const today = new Date();
+      const d = parseDateSafe(item.dEnd);
+      if (!d) return false;
+      return d <= today;
+    }
+
+    function parseDateSafe(val) {
+      if (!val) return null;
+      const s = String(val);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
+      if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+        const [dd, mm, yyyy] = s.split('.');
+        return new Date(`${yyyy}-${mm}-${dd}`);
+      }
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function isActionableStatus(status) {
+      return status === 'Нова' || status === 'Уточнено' || status === 'Потребує уточнення';
+    }
+
+    function isActiveStatus(status) {
+      return status === 'Нова' || status === 'Уточнено' || status === 'Потребує уточнення' || status === 'Погоджено';
+    }
+
+    function compareDateAsc(a, b) {
+      const da = parseDateSafe(a);
+      const db = parseDateSafe(b);
+      if (da && db) return da - db;
+      return String(a).localeCompare(String(b));
+    }
+
+    function toggleCompleted() {
+      const block = document.getElementById('completedBlock');
+      if (!block) return;
+      block.classList.toggle('d-none');
+      localStorage.setItem('trip_completed_collapsed', block.classList.contains('d-none') ? '1' : '0');
     }
 
     async function completeTrip(reqId, btn) {
