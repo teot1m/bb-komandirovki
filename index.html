@@ -80,6 +80,11 @@
       color: #842029;
     }
 
+    .st-completed {
+      background-color: #e2e3e5;
+      color: #41464b;
+    }
+
     .st-clarify {
       background-color: #fff3cd;
       color: #664d03;
@@ -301,6 +306,8 @@
     let MY_COMPANIES = [];
     let DEPARTMENTS = [];
     let USER_CARDS = [];
+    let DAILY_RATES = [];
+    let EXPENSE_OPTIONS = [];
     let CURRENT_VIEW = '';
     let toastInstance;
     let REQUEST_CACHE = {};
@@ -325,11 +332,15 @@
       // 1. Пробуем загрузиться мгновенно из памяти телефона
       const cachedUser = localStorage.getItem('trip_user_v2_' + USER_ID);
       const cachedDepts = localStorage.getItem('trip_depts');
+      const cachedRates = localStorage.getItem('trip_rates');
+      const cachedOptions = localStorage.getItem('trip_exp_opts');
 
-      if (cachedUser && cachedDepts) {
+      if (cachedUser && cachedDepts && cachedRates && cachedOptions) {
         console.log("Loaded from local cache");
         applyUserData(JSON.parse(cachedUser));
         DEPARTMENTS = JSON.parse(cachedDepts);
+        DAILY_RATES = JSON.parse(cachedRates);
+        EXPENSE_OPTIONS = JSON.parse(cachedOptions);
         initApp();
 
         // В фоне обновляем данные (чтобы если права изменились, юзер узнал об этом)
@@ -342,13 +353,17 @@
 
     async function fetchUserData(inBackground) {
       try {
-        const [resUser, resDep] = await Promise.all([
-          fetch(`${API_URL}?action=getUserInfo&userId=${USER_ID}`),
-          fetch(`${API_URL}?action=getDepartments`)
-        ]);
+      const [resUser, resDep, resRates, resOpts] = await Promise.all([
+        fetch(`${API_URL}?action=getUserInfo&userId=${USER_ID}`),
+        fetch(`${API_URL}?action=getDepartments`),
+        fetch(`${API_URL}?action=getDailyRates`),
+        fetch(`${API_URL}?action=getTripExpenseOptions`)
+      ]);
 
-        const userData = await resUser.json();
-        const deptData = await resDep.json();
+      const userData = await resUser.json();
+      const deptData = await resDep.json();
+      const rateData = await resRates.json();
+      const optData = await resOpts.json();
 
         if (userData.error) {
           if (!inBackground) document.getElementById('appContent').innerHTML = `<div class="alert alert-danger text-center">${userData.error}</div>`;
@@ -357,18 +372,24 @@
 
         // Сохраняем в память телефона
         localStorage.setItem('trip_user_v2_' + USER_ID, JSON.stringify(userData));
-        localStorage.setItem('trip_depts', JSON.stringify(deptData));
+      localStorage.setItem('trip_depts', JSON.stringify(deptData));
+      localStorage.setItem('trip_rates', JSON.stringify(rateData));
+      localStorage.setItem('trip_exp_opts', JSON.stringify(optData));
 
         // Если это не фоновое обновление, применяем и рендерим
         if (!inBackground) {
           applyUserData(userData);
-          DEPARTMENTS = deptData;
-          initApp();
-        } else {
-          // Если фоновое - просто обновляем переменные
-          applyUserData(userData);
-          DEPARTMENTS = deptData;
-        }
+        DEPARTMENTS = deptData;
+        DAILY_RATES = rateData;
+        EXPENSE_OPTIONS = optData;
+        initApp();
+      } else {
+        // Если фоновое - просто обновляем переменные
+        applyUserData(userData);
+        DEPARTMENTS = deptData;
+        DAILY_RATES = rateData;
+        EXPENSE_OPTIONS = optData;
+      }
       } catch (e) {
         if (!inBackground) showToast("Помилка з'єднання: " + e);
       }
@@ -389,6 +410,8 @@
     function forceReload() {
       localStorage.removeItem('trip_user_v2_' + USER_ID); // Чистим кэш
       localStorage.removeItem('trip_depts');
+      localStorage.removeItem('trip_rates');
+      localStorage.removeItem('trip_exp_opts');
       location.reload();
     }
 
@@ -448,6 +471,12 @@
       const cardOptions = USER_CARDS.length
         ? USER_CARDS.map(c => `<option value="${c}">${c}</option>`).join('')
         : `<option value="" disabled selected>Немає карт</option>`;
+      const rateOptions = DAILY_RATES.length
+        ? DAILY_RATES.map(r => `<option value="${r.rate}">${r.name} (${r.rate} грн)</option>`).join('')
+        : `<option value="" disabled selected>Немає ставок</option>`;
+      const expenseOptions = EXPENSE_OPTIONS.length
+        ? EXPENSE_OPTIONS.map(o => `<option value="${o}">${o}</option>`).join('')
+        : `<option value="" disabled selected>Немає опцій</option>`;
 
       document.getElementById('appContent').innerHTML = `
           <div class="card p-4 shadow-sm animate__animated animate__fadeIn">
@@ -461,9 +490,18 @@
                 <div class="col-6"><label class="small text-muted fw-bold">Дата кінця</label><input type="date" class="form-control" name="dateEnd" id="dEnd" min="${today}" onchange="calcTotal()" required></div>
               </div>
               <div class="mb-3">
+                <label class="small text-muted fw-bold">Добові</label>
+                <select class="form-select" name="perDiemRate" id="perDiemRate" onchange="calcTotal()">${rateOptions}</select>
+              </div>
+              <div class="mb-3">
                 <label class="small text-muted fw-bold">Транспорт</label>
                 <select class="form-select mb-2" name="transportType" required><option value="Поїзд">Поїзд</option><option value="Авто (Бензин)">Авто (Бензин)</option><option value="Автобус">Автобус</option><option value="Літак">Літак</option></select>
                 <input type="number" class="form-control" name="transportCost" id="tCost" placeholder="Вартість квитків (грн)" oninput="calcTotal()" required>
+              </div>
+              <div class="mb-3">
+                <label class="small text-muted fw-bold">Планові витрати</label>
+                <div id="planRows"></div>
+                <button type="button" class="btn btn-light w-100 mt-2" onclick="addPlanRow()">+ Додати витрату</button>
               </div>
               <div class="row g-2 mb-3">
                  <div class="col-6"><label class="small text-muted fw-bold">Людей</label><input type="number" class="form-control" name="peopleCount" id="pCount" value="1" min="1" oninput="calcTotal()" required></div>
@@ -474,7 +512,8 @@
                 <select class="form-select" name="paymentCard" ${USER_CARDS.length ? '' : 'disabled'}>${cardOptions}</select>
               </div>
               <div class="total-box mb-3">
-                <div class="d-flex justify-content-between mb-1"><small class="text-muted">Добові (700 ₴):</small><small class="fw-bold" id="calcDaily">0 ₴</small></div>
+                <div class="d-flex justify-content-between mb-1"><small class="text-muted">Добові:</small><small class="fw-bold" id="calcDaily">0 ₴</small></div>
+                <div class="d-flex justify-content-between mb-1"><small class="text-muted">Планові витрати:</small><small class="fw-bold" id="calcPlan">0 ₴</small></div>
                 <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2"><span class="fw-bold text-dark">ВСЬОГО:</span><span class="fs-5 fw-bold text-primary" id="calcTotal">0 ₴</span></div>
               </div>
               <button type="submit" id="btnSubmit" class="btn btn-primary w-100 py-3 rounded-pill fw-bold shadow">Створити заявку</button>
@@ -487,6 +526,9 @@
       const dE = document.getElementById('dEnd').value;
       const cost = parseFloat(document.getElementById('tCost').value) || 0;
       const people = parseInt(document.getElementById('pCount').value) || 1;
+      const rate = parseFloat(document.getElementById('perDiemRate').value) || 0;
+      const planTotal = calcPlanTotal();
+      document.getElementById('calcPlan').innerText = planTotal.toLocaleString() + ' ₴';
 
       if (dS && dE) {
         const start = new Date(dS);
@@ -494,13 +536,27 @@
         if (start > end) {
           document.getElementById('calcDaily').innerText = '-';
           document.getElementById('calcTotal').innerText = '-';
+          document.getElementById('calcPlan').innerText = '-';
           return;
         }
         const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1;
-        const dailySum = diffDays * 700 * people;
+        const dailySum = diffDays * rate * people;
         document.getElementById('calcDaily').innerText = dailySum.toLocaleString() + ' ₴';
-        document.getElementById('calcTotal').innerText = (dailySum + cost).toLocaleString() + ' ₴';
+        document.getElementById('calcTotal').innerText = (dailySum + cost + planTotal).toLocaleString() + ' ₴';
+      } else {
+        document.getElementById('calcDaily').innerText = '0 ₴';
+        document.getElementById('calcTotal').innerText = (cost + planTotal).toLocaleString() + ' ₴';
       }
+    }
+
+    function calcPlanTotal() {
+      const rows = document.querySelectorAll('#planRows .plan-row');
+      let sum = 0;
+      rows.forEach(r => {
+        const amt = parseFloat(r.querySelector('[data-plan-amount]').value) || 0;
+        sum += amt;
+      });
+      return sum;
     }
 
     function toggleCardSelect(method) {
@@ -512,6 +568,45 @@
         const sel = block.querySelector('select');
         if (sel) sel.value = "";
         block.classList.add('d-none');
+      }
+    }
+
+    function addPlanRow() {
+      const container = document.getElementById('planRows');
+      if (!container) return;
+      const optionsHtml = EXPENSE_OPTIONS.map(o => `<option value="${o}">${o}</option>`).join('');
+      const row = document.createElement('div');
+      row.className = 'plan-row border rounded p-2 mb-2';
+      row.innerHTML = `
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <select class="form-select" data-plan-name onchange="togglePlanCustom(this)">
+            ${optionsHtml}
+            <option value="Інше">Інше</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePlanRow(this)">✕</button>
+        </div>
+        <input type="text" class="form-control mb-2 d-none" data-plan-custom placeholder="Вкажіть свій варіант">
+        <input type="number" class="form-control" data-plan-amount placeholder="Сума" oninput="calcTotal()">
+      `;
+      container.appendChild(row);
+      calcTotal();
+    }
+
+    function removePlanRow(btn) {
+      const row = btn.closest('.plan-row');
+      if (row) row.remove();
+      calcTotal();
+    }
+
+    function togglePlanCustom(selectEl) {
+      const row = selectEl.closest('.plan-row');
+      if (!row) return;
+      const custom = row.querySelector('[data-plan-custom]');
+      if (selectEl.value === 'Інше') {
+        custom.classList.remove('d-none');
+      } else {
+        custom.value = '';
+        custom.classList.add('d-none');
       }
     }
 
@@ -532,7 +627,10 @@
         dateStart: form.dateStart.value, dateEnd: form.dateEnd.value,
         transportType: form.transportType.value, transportCost: form.transportCost.value,
         peopleCount: form.peopleCount.value, paymentMethod: form.paymentMethod.value,
-        paymentCard: form.paymentCard ? form.paymentCard.value : ""
+        paymentCard: form.paymentCard ? form.paymentCard.value : "",
+        perDiemRate: form.perDiemRate.value,
+        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(form.perDiemRate.value)) || {}).name || "",
+        planItems: collectPlanItems()
       };
 
       if (data.paymentMethod === 'Карта' && !data.paymentCard) {
@@ -790,6 +888,21 @@
       }
     }
 
+    function collectPlanItems() {
+      const rows = document.querySelectorAll('#planRows .plan-row');
+      const items = [];
+      rows.forEach(r => {
+        const nameSelect = r.querySelector('[data-plan-name]').value;
+        const custom = r.querySelector('[data-plan-custom]').value.trim();
+        const amount = parseFloat(r.querySelector('[data-plan-amount]').value) || 0;
+        if (!amount) return;
+        const name = nameSelect === 'Інше' ? custom : nameSelect;
+        if (!name) return;
+        items.push({ name, amount });
+      });
+      return items;
+    }
+
     function showDebugPanel(lines) {
       const containerId = 'debugPanel';
       let panel = document.getElementById(containerId);
@@ -832,7 +945,9 @@
       if (item.company.includes('ПрофіСтрой')) borderClass = 'marker-profi';
       if (item.status === 'Потребує уточнення') borderClass = 'marker-clarify';
 
-      const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost);
+      const approvedExtra = parseFloat(item.approvedExpenses || 0) || 0;
+      const planTotal = parseFloat(item.planItemsTotal || 0) || 0;
+      const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost) + planTotal + approvedExtra;
       const cardId = `card-${item.reqId}`;
 
       let footerHtml = '';
@@ -899,6 +1014,10 @@
             </div>`;
       }
 
+      const completeBtn = (!isApprover && item.status === 'Погоджено' && canCompleteTrip(item))
+        ? `<div class="mt-2 no-modal"><button class="btn btn-outline-success w-100" onclick="completeTrip('${item.reqId}', this)">Завершити відрядження</button></div>`
+        : '';
+
       return `
           <div class="card p-3 ${borderClass}" id="${cardId}" onclick="openDetailsModal('${item.reqId}', event)">
              <div class="d-flex justify-content-between mb-2"><span class="badge bg-light text-dark border">${item.company}</span>${getStatusBadge(item.status)}</div>
@@ -908,6 +1027,8 @@
              <div class="bg-light rounded p-2 small">
                 <div class="d-flex justify-content-between"><span>Транспорт:</span> <strong>${item.transType} (${item.transCost})</strong></div>
                 <div class="d-flex justify-content-between"><span>Добові (${item.people} чол):</span> <strong>${item.dailyTotal}</strong></div>
+                <div class="d-flex justify-content-between"><span>Планові витрати:</span> <strong>${planTotal}</strong></div>
+                <div class="d-flex justify-content-between"><span>Підтверджені витрати:</span> <strong>${approvedExtra}</strong></div>
                 <div class="d-flex justify-content-between"><span>Оплата:</span> <strong>${item.payment}${paymentCard}</strong></div>
                 <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold text-dark"><span>РАЗОМ:</span> <span>${totalSum} ₴</span></div>
              </div>
@@ -918,18 +1039,20 @@
              ${clarifyHtml}
              ${clarifyAnswerHtml}
              ${expenseHtml}
+             ${completeBtn}
              ${footerHtml}
           </div>`;
     }
 
     function showToast(msg) { document.getElementById('toastMessage').innerText = msg; toastInstance.show(); }
-    function getStatusBadge(s) {
-      if (s === 'Нова') return '<span class="badge-status st-new">Нова</span>';
-      if (s === 'Погоджено') return '<span class="badge-status st-approved">Погоджено</span>';
-      if (s === 'Потребує уточнення') return '<span class="badge-status st-clarify">Потребує уточнення</span>';
-      if (s === 'Уточнено') return '<span class="badge-status st-clarified">Уточнено</span>';
-      return '<span class="badge-status st-rejected">Відхилено</span>';
-    }
+      function getStatusBadge(s) {
+        if (s === 'Нова') return '<span class="badge-status st-new">Нова</span>';
+        if (s === 'Погоджено') return '<span class="badge-status st-approved">Погоджено</span>';
+        if (s === 'Потребує уточнення') return '<span class="badge-status st-clarify">Потребує уточнення</span>';
+        if (s === 'Уточнено') return '<span class="badge-status st-clarified">Уточнено</span>';
+        if (s === 'Завершено') return '<span class="badge-status st-completed">Завершено</span>';
+        return '<span class="badge-status st-rejected">Відхилено</span>';
+      }
 
     function renderExpenseCard(item) {
       const files = item.fileUrls ? item.fileUrls.split(',').filter(Boolean).map(u => `<a href="${u.trim()}" target="_blank">файл</a>`).join(', ') : '';
@@ -1016,7 +1139,9 @@
     }
 
     function renderDetailsBody(req, expenses) {
-      const totalSum = (parseFloat(req.dailyTotal) || 0) + (parseFloat(req.transCost) || 0);
+      const approvedExtra = parseFloat(req.approvedExpenses || 0) || 0;
+      const planTotal = parseFloat(req.planItemsTotal || 0) || 0;
+      const totalSum = (parseFloat(req.dailyTotal) || 0) + (parseFloat(req.transCost) || 0) + planTotal + approvedExtra;
       const paymentCard = req.paymentCard ? ` (${req.paymentCard})` : '';
       const edits = req.editSummary ? `<div class="mt-2"><strong>Зміни:</strong><br>${formatChangeLines(req.editSummary)}</div>` : '';
       const adminComment = req.adminComment ? `<div class="mt-2"><strong>Коментар адміна:</strong> ${req.adminComment}</div>` : '';
@@ -1028,6 +1153,10 @@
       ` : '';
 
       const expensesHtml = renderExpensesGroupedByDate(expenses);
+      const planItems = parsePlanItems(req.planItemsJson);
+      const planHtml = planItems.length
+        ? planItems.map(i => `<div class="d-flex justify-content-between small"><span>${i.name}</span><strong>${i.amount}</strong></div>`).join('')
+        : '<div class="text-muted small">Немає</div>';
 
       return `
         <div class="mb-2">
@@ -1040,7 +1169,10 @@
           <div class="d-flex justify-content-between"><span>Відділ:</span><strong>${req.dept}</strong></div>
           <div class="d-flex justify-content-between"><span>Транспорт:</span><strong>${req.transType} (${req.transCost})</strong></div>
           <div class="d-flex justify-content-between"><span>Добові (${req.people} чол):</span><strong>${req.dailyTotal}</strong></div>
+          <div class="d-flex justify-content-between"><span>Ставка добових:</span><strong>${req.perDiemName} (${req.perDiemRate})</strong></div>
           <div class="d-flex justify-content-between"><span>Оплата:</span><strong>${req.payment}${paymentCard}</strong></div>
+          <div class="d-flex justify-content-between"><span>Планові витрати:</span><strong>${planTotal}</strong></div>
+          <div class="d-flex justify-content-between"><span>Підтверджені витрати:</span><strong>${approvedExtra}</strong></div>
           <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold"><span>РАЗОМ:</span><span>${totalSum} ₴</span></div>
         </div>
         <div class="small text-muted">
@@ -1048,11 +1180,16 @@
           ${req.updatedAt ? `<div>Оновлено: ${formatDateTime(req.updatedAt)}</div>` : ''}
           ${req.editedBy ? `<div>Редактор: ${req.editedBy}</div>` : ''}
           ${req.approver ? `<div>Погодив: ${req.approver}</div>` : ''}
+          ${req.completedAt ? `<div>Завершено: ${formatDateTime(req.completedAt)}</div>` : ''}
         </div>
         ${userComment}
         ${adminComment}
         ${edits}
         ${clarify}
+        <div class="mt-3">
+          <div class="fw-bold mb-1">Планові витрати</div>
+          ${planHtml}
+        </div>
         <div class="mt-3">
           <div class="fw-bold mb-1">Додаткові витрати</div>
           ${expensesHtml}
@@ -1128,6 +1265,32 @@
           </div>
         `;
       }).join('');
+    }
+
+    function parsePlanItems(raw) {
+      if (!raw) return [];
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return arr;
+      } catch (e) {}
+      return [];
+    }
+
+    function canCompleteTrip(item) {
+      if (!item || !item.dEnd) return false;
+      const today = new Date().toISOString().split('T')[0];
+      return String(item.dEnd) <= today;
+    }
+
+    async function completeTrip(reqId, btn) {
+      if (!confirm("Завершити відрядження?")) return;
+      setBtnLoading(btn, true);
+      try {
+        const res = await sendPost('completeTrip', { rowId: reqId, userId: USER_ID });
+        if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+        else showToast(res.message);
+      } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
     }
   </script>
 </body>
