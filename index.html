@@ -23,15 +23,19 @@
       .st-new { background-color: #e3f2fd; color: #0d47a1; }
       .st-approved { background-color: #d1e7dd; color: #0f5132; }
       .st-rejected { background-color: #f8d7da; color: #842029; }
+      .st-clarify { background-color: #fff3cd; color: #664d03; }
+      .st-clarified { background-color: #cff4fc; color: #055160; }
 
       .marker-flash { border-left: 5px solid #ffc107; }
       .marker-blue { border-left: 5px solid #0d6efd; }
       .marker-profi { border-left: 5px solid #6610f2; }
       .marker-gray { border-left: 5px solid #6c757d; }
+      .marker-clarify { border-left: 5px solid #fd7e14; }
 
       .total-box { background: #f8f9fa; border-radius: 12px; padding: 15px; border: 1px dashed #adb5bd; }
       .toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1060; width: 97%; max-width: 400px; }
       .toast { background: #333; color: #fff; border-radius: 12px; }
+      .expense-form { background: #fff; border-radius: 12px; border: 1px solid #e9ecef; padding: 12px; }
     </style>
   </head>
   <body>
@@ -74,6 +78,87 @@
       </div>
     </div>
 
+    <!-- Clarification Modal -->
+    <div class="modal fade" id="clarifyModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title">Потребує уточнення</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <textarea class="form-control" id="clarifyText" rows="4" placeholder="Опишіть, що потрібно уточнити..."></textarea>
+            <input type="hidden" id="clarifyReqId">
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-light" data-bs-dismiss="modal">Скасувати</button>
+            <button class="btn btn-warning text-dark" onclick="submitClarifyRequest()">Відправити</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit + Approve Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title">Редагувати та погодити</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="editReqId">
+            <div class="mb-2">
+              <label class="small text-muted fw-bold">Компанія</label>
+              <input type="text" class="form-control" id="editCompany">
+            </div>
+            <div class="mb-2">
+              <label class="small text-muted fw-bold">Відділ</label>
+              <input type="text" class="form-control" id="editDept">
+            </div>
+            <div class="mb-2">
+              <label class="small text-muted fw-bold">Мета</label>
+              <input type="text" class="form-control" id="editPurpose">
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Дата початку</label>
+                <input type="date" class="form-control" id="editStart">
+              </div>
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Дата кінця</label>
+                <input type="date" class="form-control" id="editEnd">
+              </div>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Транспорт</label>
+                <input type="text" class="form-control" id="editTransType">
+              </div>
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Вартість транспорту</label>
+                <input type="number" class="form-control" id="editTransCost">
+              </div>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Людей</label>
+                <input type="number" class="form-control" id="editPeople">
+              </div>
+              <div class="col-6">
+                <label class="small text-muted fw-bold">Оплата</label>
+                <input type="text" class="form-control" id="editPayment">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-light" data-bs-dismiss="modal">Скасувати</button>
+            <button class="btn btn-success" onclick="submitEditApprove()">Погодити</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       const API_URL = "https://script.google.com/macros/s/AKfycbx0v1qTvhc7VIjnEBfSTTGUT2jW8ITEzF6rJ4_ENgKzGLbC2MGiUKFTgUuOnG9sWgr-/exec"; 
@@ -87,9 +172,15 @@
       let DEPARTMENTS = [];
       let CURRENT_VIEW = '';
       let toastInstance;
+      let REQUEST_CACHE = {};
+      let EXPENSE_CACHE = {};
+      let clarifyModalInstance;
+      let editModalInstance;
 
       window.onload = async function() {
         toastInstance = new bootstrap.Toast(document.getElementById('liveToast'), { delay: 3000 });
+        clarifyModalInstance = new bootstrap.Modal(document.getElementById('clarifyModal'));
+        editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
         
         if (!USER_ID) {
            document.getElementById('appContent').innerHTML = '<div class="alert alert-danger text-center">Не вказано User ID</div>';
@@ -303,6 +394,8 @@
         const data = await res.json();
         
         if(data.length === 0) { document.getElementById('appContent').innerHTML = '<div class="text-center text-muted mt-5">Історія порожня</div>'; return; }
+        REQUEST_CACHE = {};
+        data.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
         document.getElementById('appContent').innerHTML = data.map(item => renderCard(item, false)).join('');
       }
 
@@ -311,11 +404,29 @@
         setActiveTab(0);
         document.getElementById('appContent').innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary"></div></div>';
 
-        const res = await fetch(`${API_URL}?action=getPendingRequests&userId=${USER_ID}`);
-        const data = await res.json();
-        
-        if(data.length === 0) { document.getElementById('appContent').innerHTML = '<div class="text-center text-muted mt-5">Немає заявок</div>'; return; }
-        document.getElementById('appContent').innerHTML = data.map(item => renderCard(item, true)).join('');
+        const [resReq, resExp] = await Promise.all([
+          fetch(`${API_URL}?action=getPendingRequests&userId=${USER_ID}`),
+          fetch(`${API_URL}?action=getPendingExpenses&userId=${USER_ID}`)
+        ]);
+        const data = await resReq.json();
+        const expenses = await resExp.json();
+
+        REQUEST_CACHE = {};
+        EXPENSE_CACHE = {};
+        data.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
+        expenses.forEach(item => { EXPENSE_CACHE[item.expenseId] = item; });
+
+        let html = '';
+        if (data.length > 0) {
+          html += `<div class="fw-bold text-muted mb-2">Заявки</div>`;
+          html += data.map(item => renderCard(item, true)).join('');
+        }
+        if (expenses.length > 0) {
+          html += `<div class="fw-bold text-muted mt-4 mb-2">Витрати на затвердження</div>`;
+          html += expenses.map(item => renderExpenseCard(item)).join('');
+        }
+        if (!html) html = '<div class="text-center text-muted mt-5">Немає заявок</div>';
+        document.getElementById('appContent').innerHTML = html;
       }
 
       async function makeDecision(reqId, decision) {
@@ -324,10 +435,155 @@
          if(card) card.style.opacity = '0.5';
 
          try {
-            const res = await sendPost('approveRequest', { rowId: reqId, approver: USER_NAME, decision: decision });
+            const res = await sendPost('approveRequest', { rowId: reqId, approver: USER_NAME, approverId: USER_ID, decision: decision });
             if(res.status === 'success') { showToast(res.message); loadApproverPending(); }
             else { showToast(res.message); if(card) card.style.opacity = '1'; }
          } catch(err) { showToast("Помилка: "+err); if(card) card.style.opacity = '1'; }
+      }
+
+      function openClarifyModal(reqId) {
+        document.getElementById('clarifyReqId').value = reqId;
+        document.getElementById('clarifyText').value = '';
+        clarifyModalInstance.show();
+      }
+
+      async function submitClarifyRequest() {
+        const reqId = document.getElementById('clarifyReqId').value;
+        const text = document.getElementById('clarifyText').value.trim();
+        if (!text) { showToast("Вкажіть уточнення"); return; }
+        try {
+          const res = await sendPost('requestClarification', { rowId: reqId, adminId: USER_ID, adminName: USER_NAME, question: text });
+          if (res.status === 'success') { showToast(res.message); clarifyModalInstance.hide(); loadApproverPending(); }
+          else showToast(res.message);
+        } catch (err) { showToast("Помилка: " + err); }
+      }
+
+      function openEditModal(reqId) {
+        const item = REQUEST_CACHE[reqId];
+        if (!item) return;
+        document.getElementById('editReqId').value = reqId;
+        document.getElementById('editCompany').value = item.company || '';
+        document.getElementById('editDept').value = item.dept || '';
+        document.getElementById('editPurpose').value = item.purpose || '';
+        document.getElementById('editStart').value = item.dStart || '';
+        document.getElementById('editEnd').value = item.dEnd || '';
+        document.getElementById('editTransType').value = item.transType || '';
+        document.getElementById('editTransCost').value = item.transCost || 0;
+        document.getElementById('editPeople').value = item.people || 1;
+        document.getElementById('editPayment').value = item.payment || '';
+        editModalInstance.show();
+      }
+
+      async function submitEditApprove() {
+        const reqId = document.getElementById('editReqId').value;
+        const data = {
+          company: document.getElementById('editCompany').value,
+          department: document.getElementById('editDept').value,
+          purpose: document.getElementById('editPurpose').value,
+          dateStart: document.getElementById('editStart').value,
+          dateEnd: document.getElementById('editEnd').value,
+          transportType: document.getElementById('editTransType').value,
+          transportCost: document.getElementById('editTransCost').value,
+          peopleCount: document.getElementById('editPeople').value,
+          paymentMethod: document.getElementById('editPayment').value
+        };
+        try {
+          const res = await sendPost('updateAndApproveRequest', { rowId: reqId, approver: USER_NAME, approverId: USER_ID, data });
+          if (res.status === 'success') { showToast(res.message); editModalInstance.hide(); loadApproverPending(); }
+          else showToast(res.message);
+        } catch (err) { showToast("Помилка: " + err); }
+      }
+
+      async function submitClarificationAnswer(reqId) {
+        const input = document.getElementById(`clarify-answer-${reqId}`);
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text) { showToast("Вкажіть відповідь"); return; }
+        try {
+          const res = await sendPost('submitClarificationAnswer', { rowId: reqId, userId: USER_ID, answer: text });
+          if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+          else showToast(res.message);
+        } catch (err) { showToast("Помилка: " + err); }
+      }
+
+      function toggleExpensesForm(reqId) {
+        const block = document.getElementById(`exp-block-${reqId}`);
+        if (block) {
+          block.classList.toggle('d-none');
+          const container = document.getElementById(`exp-rows-${reqId}`);
+          if (container && container.children.length === 0) addExpenseRow(reqId);
+        }
+      }
+
+      function addExpenseRow(reqId) {
+        const container = document.getElementById(`exp-rows-${reqId}`);
+        if (!container) return;
+        const idx = container.children.length + 1;
+        const row = document.createElement('div');
+        row.className = 'expense-form mb-2';
+        row.innerHTML = `
+          <div class="mb-2"><input type="text" class="form-control" placeholder="Назва витрати" data-exp-name required></div>
+          <div class="mb-2"><input type="number" class="form-control" placeholder="Сума" data-exp-amount required></div>
+          <div class="mb-2"><input type="text" class="form-control" placeholder="Опис (необов'язково)" data-exp-desc></div>
+          <div class="mb-2"><input type="text" class="form-control" placeholder="Посилання (необов'язково)" data-exp-link></div>
+          <div class="mb-1"><input type="file" class="form-control" data-exp-files multiple></div>
+        `;
+        container.appendChild(row);
+      }
+
+      async function submitExpenses(reqId) {
+        const container = document.getElementById(`exp-rows-${reqId}`);
+        if (!container) return;
+        const rows = Array.from(container.children);
+        const expenses = [];
+
+        for (const row of rows) {
+          const name = row.querySelector('[data-exp-name]').value.trim();
+          const amount = row.querySelector('[data-exp-amount]').value.trim();
+          const description = row.querySelector('[data-exp-desc]').value.trim();
+          const link = row.querySelector('[data-exp-link]').value.trim();
+          const filesInput = row.querySelector('[data-exp-files]');
+          if (!name || !amount) { showToast("Заповніть назву і суму"); return; }
+
+          const files = [];
+          const fileList = Array.from(filesInput.files || []);
+          for (const f of fileList) {
+            if (f.size > 5 * 1024 * 1024) { showToast("Файл занадто великий (макс 5MB)"); return; }
+            const data = await readFileAsBase64(f);
+            files.push({ name: f.name, mime: f.type, data: data });
+          }
+
+          expenses.push({ name, amount, description, link, files });
+        }
+
+        try {
+          const res = await sendPost('submitExpenses', { rowId: reqId, userId: USER_ID, userName: USER_NAME, expenses });
+          if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+          else showToast(res.message);
+        } catch (err) { showToast("Помилка: " + err); }
+      }
+
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = (reader.result || '').toString().split(',')[1] || '';
+            resolve(base64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function decideExpense(expenseId, decision) {
+        if(!confirm(decision === 'approve' ? "Погодити витрату?" : "Відхилити витрату?")) return;
+        const card = document.getElementById(`exp-${expenseId}`);
+        if(card) card.style.opacity = '0.5';
+        try {
+          const res = await sendPost('decideExpense', { expenseId, approver: USER_NAME, decision });
+          if(res.status === 'success') { showToast(res.message); loadApproverPending(); }
+          else { showToast(res.message); if(card) card.style.opacity = '1'; }
+        } catch(err) { showToast("Помилка: "+err); if(card) card.style.opacity = '1'; }
       }
 
       function renderCard(item, isApprover) {
@@ -335,6 +591,7 @@
         if(item.company.includes('Blue Bird')) borderClass = 'marker-blue';
         if(item.company.includes('Flash')) borderClass = 'marker-flash';
         if(item.company.includes('ПрофіСтрой')) borderClass = 'marker-profi';
+        if(item.status === 'Потребує уточнення') borderClass = 'marker-clarify';
 
         const totalSum = parseFloat(item.dailyTotal) + parseFloat(item.transCost);
         const cardId = `card-${item.reqId}`;
@@ -346,9 +603,56 @@
                 <button class="btn btn-outline-danger flex-grow-1" onclick="makeDecision('${item.reqId}', 'reject')">Відхилити</button>
                 <button class="btn btn-success flex-grow-1" onclick="makeDecision('${item.reqId}', 'approve')">Погодити</button>
             </div>`;
+          footerHtml += `
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-outline-warning flex-grow-1" onclick="openClarifyModal('${item.reqId}')">Потребує уточнення</button>
+                <button class="btn btn-outline-primary flex-grow-1" onclick="openEditModal('${item.reqId}')">Редагувати та погодити</button>
+            </div>`;
         } else {
              if(item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
              if(item.status === 'Відхилено') footerHtml = `<div class="mt-2 text-danger small text-end fw-bold"><i class="bi bi-x-circle"></i> Відхилив: ${item.approver}</div>`;
+        }
+
+        let clarifyHtml = '';
+        if(item.clarifyQuestion) {
+          clarifyHtml += `<div class="mt-2 small text-warning"><i class="bi bi-question-circle"></i> Уточнення: ${item.clarifyQuestion}</div>`;
+        }
+        if(item.clarifyAnswer) {
+          clarifyHtml += `<div class="mt-1 small text-info"><i class="bi bi-chat-left-text"></i> Відповідь: ${item.clarifyAnswer}</div>`;
+        }
+
+        let editHtml = '';
+        if(item.editSummary) {
+          editHtml = `<div class="mt-2 small text-muted"><i class="bi bi-pencil-square"></i> Зміни: ${item.editSummary}</div>`;
+        }
+
+        let expensesBadge = '';
+        if (item.pendingExpenses && parseInt(item.pendingExpenses) > 0) {
+          expensesBadge = `<div class="mt-2 small text-primary"><i class="bi bi-receipt"></i> Очікують витрати: ${item.pendingExpenses}</div>`;
+        }
+
+        let clarifyAnswerHtml = '';
+        if(!isApprover && item.status === 'Потребує уточнення') {
+          clarifyAnswerHtml = `
+            <div class="mt-2">
+              <textarea class="form-control mb-2" id="clarify-answer-${item.reqId}" rows="2" placeholder="Ваша відповідь..."></textarea>
+              <button class="btn btn-warning w-100" onclick="submitClarificationAnswer('${item.reqId}')">Відправити уточнення</button>
+            </div>`;
+        }
+
+        let expenseHtml = '';
+        if(!isApprover && item.status === 'Погоджено') {
+          expenseHtml = `
+            <div class="mt-2">
+              <button class="btn btn-outline-primary w-100" onclick="toggleExpensesForm('${item.reqId}')">Додати витрати</button>
+              <div class="mt-2 d-none" id="exp-block-${item.reqId}">
+                <div id="exp-rows-${item.reqId}"></div>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-light flex-grow-1" onclick="addExpenseRow('${item.reqId}')">+ Додати ще</button>
+                  <button class="btn btn-success flex-grow-1" onclick="submitExpenses('${item.reqId}')">Відправити</button>
+                </div>
+              </div>
+            </div>`;
         }
 
         return `
@@ -362,6 +666,11 @@
                 <div class="d-flex justify-content-between"><span>Добові (${item.people} чол):</span> <strong>${item.dailyTotal}</strong></div>
                 <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold text-dark"><span>РАЗОМ:</span> <span>${totalSum} ₴</span></div>
              </div>
+             ${expensesBadge}
+             ${editHtml}
+             ${clarifyHtml}
+             ${clarifyAnswerHtml}
+             ${expenseHtml}
              ${footerHtml}
           </div>`;
       }
@@ -370,7 +679,33 @@
       function getStatusBadge(s) {
         if(s === 'Нова') return '<span class="badge-status st-new">Нова</span>';
         if(s === 'Погоджено') return '<span class="badge-status st-approved">Погоджено</span>';
+        if(s === 'Потребує уточнення') return '<span class="badge-status st-clarify">Потребує уточнення</span>';
+        if(s === 'Уточнено') return '<span class="badge-status st-clarified">Уточнено</span>';
         return '<span class="badge-status st-rejected">Відхилено</span>';
+      }
+
+      function renderExpenseCard(item) {
+        const files = item.fileUrls ? item.fileUrls.split(',').filter(Boolean).map(u => `<a href="${u.trim()}" target="_blank">файл</a>`).join(', ') : '';
+        return `
+          <div class="card p-3 marker-gray" id="exp-${item.expenseId}">
+            <div class="d-flex justify-content-between mb-2">
+              <span class="badge bg-light text-dark border">${item.company}</span>
+              <span class="badge-status st-new">Витрати</span>
+            </div>
+            <div class="fw-bold">${item.userName}</div>
+            <div class="text-muted small mb-2">Заявка: ${item.reqId}</div>
+            <div class="bg-light rounded p-2 small">
+              <div class="d-flex justify-content-between"><span>Назва:</span> <strong>${item.name}</strong></div>
+              <div class="d-flex justify-content-between"><span>Сума:</span> <strong>${item.amount}</strong></div>
+              ${item.description ? `<div class="mt-1">${item.description}</div>` : ''}
+              ${item.link ? `<div class="mt-1"><a href="${item.link}" target="_blank">${item.link}</a></div>` : ''}
+              ${files ? `<div class="mt-1">Файли: ${files}</div>` : ''}
+            </div>
+            <div class="d-flex gap-2 mt-3 pt-2 border-top">
+              <button class="btn btn-outline-danger flex-grow-1" onclick="decideExpense('${item.expenseId}', 'reject')">Відхилити</button>
+              <button class="btn btn-success flex-grow-1" onclick="decideExpense('${item.expenseId}', 'approve')">Погодити</button>
+            </div>
+          </div>`;
       }
     </script>
   </body>
