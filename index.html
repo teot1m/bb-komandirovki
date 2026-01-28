@@ -797,32 +797,24 @@
       if (ev && ev.stopPropagation) ev.stopPropagation();
       const item = REQUEST_CACHE[reqId];
       if (!item) { showToast("Дані заявки не знайдено"); return; }
-      const ids = [
-        'editReqId','editCompany','editDept','editPurpose','editStart','editEnd',
-        'editPeople','editPayment','editCard','editAdminComment','editPerDiemRate','editPlanRows'
-      ];
-      const missing = ids.filter(id => !document.getElementById(id));
-      if (missing.length) {
-        showToast("Помилка: форма редагування не готова");
-        console.error("Missing edit fields:", missing);
-        return;
-      }
       try {
-        document.getElementById('editReqId').value = reqId;
-        document.getElementById('editCompany').value = item.company || '';
-        document.getElementById('editDept').value = item.dept || '';
-        document.getElementById('editPurpose').value = item.purpose || '';
-        document.getElementById('editStart').value = item.dStart || '';
-        document.getElementById('editEnd').value = item.dEnd || '';
-        document.getElementById('editPeople').value = item.people || 1;
-        document.getElementById('editPayment').value = item.payment || '';
-        document.getElementById('editCard').value = item.paymentCard || '';
-        document.getElementById('editAdminComment').value = '';
+        setElValue('editReqId', reqId);
+        setElValue('editCompany', item.company || '');
+        setElValue('editDept', item.dept || '');
+        setElValue('editPurpose', item.purpose || '');
+        setElValue('editStart', item.dStart || '');
+        setElValue('editEnd', item.dEnd || '');
+        setElValue('editPeople', item.people || 1);
+        setElValue('editPayment', item.payment || '');
+        setElValue('editCard', item.paymentCard || '');
+        setElValue('editAdminComment', '');
         const rateSel = document.getElementById('editPerDiemRate');
-        rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
-        rateSel.value = item.perDiemRate || '';
+        if (rateSel) {
+          rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
+          rateSel.value = item.perDiemRate || '';
+        }
         const planContainer = document.getElementById('editPlanRows');
-        planContainer.innerHTML = '';
+        if (planContainer) planContainer.innerHTML = '';
         const planItems = parsePlanItems(item.planItemsJson);
         if (planItems.length === 0) addPlanRowTo('editPlanRows');
         else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
@@ -992,6 +984,12 @@
           delete btn.dataset.prev;
         }
       }
+    }
+
+    function setElValue(id, value) {
+      const el = document.getElementById(id);
+      if (!el) throw new Error(`Element not found: ${id}`);
+      el.value = value;
     }
 
     function collectPlanItems() {
