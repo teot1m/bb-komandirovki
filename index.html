@@ -406,11 +406,12 @@
       document.getElementById('ui-userRole').innerText = USER_ROLE;
     }
 
-    function forceReload() {
+    async function forceReload() {
       localStorage.removeItem('trip_user_v2_' + USER_ID); // Чистим кэш
       localStorage.removeItem('trip_depts');
       localStorage.removeItem('trip_rates');
       localStorage.removeItem('trip_exp_opts');
+      try { await sendPost('clearCache', { userId: USER_ID }); } catch (e) {}
       fetchUserData(false);
     }
 
