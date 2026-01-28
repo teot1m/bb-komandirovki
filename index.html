@@ -632,6 +632,7 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
+      const perDiemEl = document.getElementById('perDiemRate');
       const data = {
         userId: USER_ID, userName: USER_NAME,
         company: form.company.value, department: form.department.value, purpose: form.purpose.value,
@@ -640,8 +641,8 @@
         transportType: "", transportCost: 0,
         peopleCount: form.peopleCount.value, paymentMethod: form.paymentMethod.value,
         paymentCard: form.paymentCard ? form.paymentCard.value : "",
-        perDiemRate: form.perDiemRate.value,
-        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(form.perDiemRate.value)) || {}).name || "",
+        perDiemRate: perDiemEl ? perDiemEl.value : "",
+        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(perDiemEl ? perDiemEl.value : "")) || {}).name || "",
         planItems: collectPlanItems()
       };
 
@@ -736,8 +737,24 @@
         html += expensesGrouped.map(item => renderExpenseGroupCard(item)).join('');
       }
       if (sortedReq.length > 0) {
+        const activeReq = sortedReq.filter(i => i.status !== 'Завершено');
+        const completedReq = sortedReq.filter(i => i.status === 'Завершено');
         html += `<div class="fw-bold text-muted ${expensesGrouped.length ? 'mt-4' : ''} mb-2">Заявки</div>`;
-        html += sortedReq.map(item => renderCard(item, true)).join('');
+        html += activeReq.map(item => renderCard(item, true)).join('');
+        if (completedReq.length > 0) {
+          const collapsed = localStorage.getItem('trip_completed_admin_collapsed') !== '0';
+          html += `
+            <div class="card p-3 mt-2">
+              <div class="d-flex justify-content-between align-items-center">
+                <strong>Завершені відрядження (${completedReq.length})</strong>
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleCompletedAdmin()">Показати/Сховати</button>
+              </div>
+              <div id="completedAdminBlock" class="${collapsed ? 'd-none' : ''} mt-2">
+                ${completedReq.map(item => renderCard(item, true)).join('')}
+              </div>
+            </div>
+          `;
+        }
       }
       if (!html) html = '<div class="text-center text-muted mt-5">Немає заявок</div>';
       document.getElementById('appContent').innerHTML = html;
@@ -811,6 +828,7 @@
       const adminCommentVal = document.getElementById('editAdminComment').value.trim();
       if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
       setBtnLoading(btn, true);
+      const rateEl = document.getElementById('editPerDiemRate');
       const data = {
         company: document.getElementById('editCompany').value,
         department: document.getElementById('editDept').value,
@@ -821,8 +839,8 @@
         paymentMethod: document.getElementById('editPayment').value,
         paymentCard: document.getElementById('editCard').value,
         adminComment: adminCommentVal,
-        perDiemRate: document.getElementById('editPerDiemRate').value,
-        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(document.getElementById('editPerDiemRate').value)) || {}).name || "",
+        perDiemRate: rateEl ? rateEl.value : "",
+        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(rateEl ? rateEl.value : "")) || {}).name || "",
         planItemsJson: JSON.stringify(collectPlanItemsFrom('editPlanRows')),
         planItemsTotal: collectPlanItemsFrom('editPlanRows').reduce((s, i) => s + (Number(i.amount) || 0), 0)
       };
@@ -1393,6 +1411,13 @@
       if (!block) return;
       block.classList.toggle('d-none');
       localStorage.setItem('trip_completed_collapsed', block.classList.contains('d-none') ? '1' : '0');
+    }
+
+    function toggleCompletedAdmin() {
+      const block = document.getElementById('completedAdminBlock');
+      if (!block) return;
+      block.classList.toggle('d-none');
+      localStorage.setItem('trip_completed_admin_collapsed', block.classList.contains('d-none') ? '1' : '0');
     }
 
     async function completeTrip(reqId, btn) {
