@@ -797,6 +797,16 @@
       if (ev && ev.stopPropagation) ev.stopPropagation();
       const item = REQUEST_CACHE[reqId];
       if (!item) { showToast("Дані заявки не знайдено"); return; }
+      const ids = [
+        'editReqId','editCompany','editDept','editPurpose','editStart','editEnd',
+        'editPeople','editPayment','editCard','editAdminComment','editPerDiemRate','editPlanRows'
+      ];
+      const missing = ids.filter(id => !document.getElementById(id));
+      if (missing.length) {
+        showToast("Помилка: форма редагування не готова");
+        console.error("Missing edit fields:", missing);
+        return;
+      }
       try {
         document.getElementById('editReqId').value = reqId;
         document.getElementById('editCompany').value = item.company || '';
