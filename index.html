@@ -1040,14 +1040,14 @@
       if (pre) pre.textContent = lines.join('\n');
     }
 
-    async function decideExpenseBatch(reqId, expenseIds, decision, btn) {
+    async function decideExpenseBatch(reqId, expenseIds, decision, expenseItems, btn) {
       if (!expenseIds || expenseIds.length === 0) return;
-      if (!confirm(decision === 'approve' ? "Погодити всі витрати?" : "Відхилити всі витрати?")) return;
+      if (!confirm(decision === 'approve' ? "Погодити витрати?" : "Відхилити витрати?")) return;
       const card = document.getElementById(`exp-group-${reqId}`);
       if (card) card.style.opacity = '0.5';
       setBtnLoading(btn, true);
       try {
-        const res = await sendPost('decideExpensesBatch', { expenseIds, approver: USER_NAME, decision });
+        const res = await sendPost('decideExpensesBatch', { expenseIds, expenseItems, approver: USER_NAME, decision });
         if (res.status === 'success') { showToast(res.message); loadApproverPending(); }
         else { showToast(res.message); if (card) card.style.opacity = '1'; }
       } catch (err) { showToast("Помилка: " + err); if (card) card.style.opacity = '1'; }
@@ -1197,8 +1197,12 @@
       const total = group.items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
       const ids = group.items.map(i => i.expenseId);
       const itemsHtml = group.items.map(i => `
-        <div class="d-flex justify-content-between small">
-          <span>${i.name}</span><strong>${i.amount}</strong>
+        <div class="d-flex justify-content-between align-items-center small exp-item-row" data-exp-id="${i.expenseId}">
+          <label class="d-flex align-items-center gap-2 no-modal">
+            <input type="checkbox" class="form-check-input no-modal exp-select">
+            <span>${i.name}</span>
+          </label>
+          <input type="number" class="form-control form-control-sm no-modal exp-amount" style="max-width: 110px;" value="${i.amount}" oninput="updateExpenseGroupTotal('${group.reqId}')">
         </div>
       `).join('');
 
@@ -1213,7 +1217,7 @@
           <div class="bg-light rounded p-2 small">
             ${itemsHtml}
             <div class="d-flex justify-content-between border-top mt-1 pt-1 fw-bold text-dark">
-              <span>Разом:</span><span>${total} ₴</span>
+              <span>Разом:</span><span id="exp-total-${group.reqId}">${total} ₴</span>
             </div>
           </div>
           <div class="d-flex gap-2 mt-3 pt-2 border-top no-modal">
@@ -1227,7 +1231,42 @@
       const raw = btn ? btn.getAttribute('data-exp-ids') : '[]';
       let ids = [];
       try { ids = JSON.parse(raw || '[]'); } catch (e) { ids = []; }
-      decideExpenseBatch(reqId, ids, decision, btn);
+      const selection = collectExpenseDecision(reqId, ids);
+      decideExpenseBatch(reqId, selection.ids, decision, selection.items, btn);
+    }
+
+    function collectExpenseDecision(reqId, fallbackIds) {
+      const card = document.getElementById(`exp-group-${reqId}`);
+      if (!card) return { ids: fallbackIds || [], items: [] };
+      const rows = Array.from(card.querySelectorAll('.exp-item-row'));
+      const all = [];
+      const selected = [];
+      rows.forEach(r => {
+        const id = r.getAttribute('data-exp-id');
+        const chk = r.querySelector('.exp-select');
+        const amtEl = r.querySelector('.exp-amount');
+        const amount = parseFloat(amtEl ? amtEl.value : '') || 0;
+        const entry = { expenseId: id, amount: amount };
+        all.push(entry);
+        if (chk && chk.checked) selected.push(entry);
+      });
+      const chosen = selected.length ? selected : all;
+      return { ids: chosen.map(i => i.expenseId), items: chosen };
+    }
+
+    function updateExpenseGroupTotal(reqId) {
+      const card = document.getElementById(`exp-group-${reqId}`);
+      if (!card) return;
+      const totalEl = document.getElementById(`exp-total-${reqId}`);
+      if (!totalEl) return;
+      const rows = Array.from(card.querySelectorAll('.exp-item-row'));
+      let sum = 0;
+      rows.forEach(r => {
+        const amtEl = r.querySelector('.exp-amount');
+        const amount = parseFloat(amtEl ? amtEl.value : '') || 0;
+        sum += amount;
+      });
+      totalEl.textContent = sum + ' ₴';
     }
 
     async function openDetailsModal(reqId, ev) {
