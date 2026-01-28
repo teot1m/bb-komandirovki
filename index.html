@@ -824,20 +824,34 @@
     }
 
     async function submitEditApprove(btn) {
-      const reqId = document.getElementById('editReqId').value;
-      const adminCommentVal = document.getElementById('editAdminComment').value.trim();
+      const reqIdEl = document.getElementById('editReqId');
+      const adminCommentEl = document.getElementById('editAdminComment');
+      const companyEl = document.getElementById('editCompany');
+      const deptEl = document.getElementById('editDept');
+      const purposeEl = document.getElementById('editPurpose');
+      const startEl = document.getElementById('editStart');
+      const endEl = document.getElementById('editEnd');
+      const peopleEl = document.getElementById('editPeople');
+      const paymentEl = document.getElementById('editPayment');
+      const cardEl = document.getElementById('editCard');
+      const rateEl = document.getElementById('editPerDiemRate');
+      const reqId = reqIdEl ? reqIdEl.value : '';
+      const adminCommentVal = adminCommentEl ? adminCommentEl.value.trim() : '';
+      if (!companyEl || !deptEl || !purposeEl || !startEl || !endEl || !peopleEl || !paymentEl || !cardEl || !rateEl) {
+        showToast("Помилка: форма редагування не готова");
+        return;
+      }
       if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
       setBtnLoading(btn, true);
-      const rateEl = document.getElementById('editPerDiemRate');
       const data = {
-        company: document.getElementById('editCompany').value,
-        department: document.getElementById('editDept').value,
-        purpose: document.getElementById('editPurpose').value,
-        dateStart: document.getElementById('editStart').value,
-        dateEnd: document.getElementById('editEnd').value,
-        peopleCount: document.getElementById('editPeople').value,
-        paymentMethod: document.getElementById('editPayment').value,
-        paymentCard: document.getElementById('editCard').value,
+        company: companyEl.value,
+        department: deptEl.value,
+        purpose: purposeEl.value,
+        dateStart: startEl.value,
+        dateEnd: endEl.value,
+        peopleCount: peopleEl.value,
+        paymentMethod: paymentEl.value,
+        paymentCard: cardEl.value,
         adminComment: adminCommentVal,
         perDiemRate: rateEl ? rateEl.value : "",
         perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(rateEl ? rateEl.value : "")) || {}).name || "",
