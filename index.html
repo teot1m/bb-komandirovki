@@ -940,7 +940,7 @@
         if (!name || !amount) { showToast("Заповніть назву і суму"); return; }
 
         const files = [];
-        const fileList = Array.from(filesInput.files || []);
+        const fileList = filesInput ? Array.from(filesInput.files || []) : [];
         for (const f of fileList) {
           if (f.size > 5 * 1024 * 1024) { showToast("Файл занадто великий (макс 5MB)"); return; }
           const data = await readFileAsBase64(f);
