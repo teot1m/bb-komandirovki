@@ -517,30 +517,38 @@
     }
 
     function calcTotal() {
-      const dS = document.getElementById('dStart').value;
-      const dE = document.getElementById('dEnd').value;
+      const dStartEl = document.getElementById('dStart');
+      const dEndEl = document.getElementById('dEnd');
+      const peopleEl = document.getElementById('pCount');
+      const rateEl = document.getElementById('perDiemRate');
+      const planEl = document.getElementById('calcPlan');
+      const dailyEl = document.getElementById('calcDaily');
+      const totalEl = document.getElementById('calcTotal');
+      if (!dStartEl || !dEndEl || !peopleEl || !rateEl || !planEl || !dailyEl || !totalEl) return;
+      const dS = dStartEl.value;
+      const dE = dEndEl.value;
       const cost = 0;
-      const people = parseInt(document.getElementById('pCount').value) || 1;
-      const rate = parseFloat(document.getElementById('perDiemRate').value) || 0;
+      const people = parseInt(peopleEl.value) || 1;
+      const rate = parseFloat(rateEl.value) || 0;
       const planTotal = calcPlanTotal();
-      document.getElementById('calcPlan').innerText = planTotal.toLocaleString() + ' ₴';
+      planEl.innerText = planTotal.toLocaleString() + ' ₴';
 
       if (dS && dE) {
         const start = new Date(dS);
         const end = new Date(dE);
         if (start > end) {
-          document.getElementById('calcDaily').innerText = '-';
-          document.getElementById('calcTotal').innerText = '-';
-          document.getElementById('calcPlan').innerText = '-';
+          dailyEl.innerText = '-';
+          totalEl.innerText = '-';
+          planEl.innerText = '-';
           return;
         }
         const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1;
         const dailySum = diffDays * rate * people;
-        document.getElementById('calcDaily').innerText = dailySum.toLocaleString() + ' ₴';
-        document.getElementById('calcTotal').innerText = (dailySum + cost + planTotal).toLocaleString() + ' ₴';
+        dailyEl.innerText = dailySum.toLocaleString() + ' ₴';
+        totalEl.innerText = (dailySum + cost + planTotal).toLocaleString() + ' ₴';
       } else {
-        document.getElementById('calcDaily').innerText = '0 ₴';
-        document.getElementById('calcTotal').innerText = (cost + planTotal).toLocaleString() + ' ₴';
+        dailyEl.innerText = '0 ₴';
+        totalEl.innerText = (cost + planTotal).toLocaleString() + ' ₴';
       }
     }
 
