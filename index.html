@@ -776,28 +776,34 @@
       setBtnLoading(btn, false);
     }
 
-    function openEditModal(reqId) {
+    function openEditModal(reqId, ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
       const item = REQUEST_CACHE[reqId];
-      if (!item) return;
-      document.getElementById('editReqId').value = reqId;
-      document.getElementById('editCompany').value = item.company || '';
-      document.getElementById('editDept').value = item.dept || '';
-      document.getElementById('editPurpose').value = item.purpose || '';
-      document.getElementById('editStart').value = item.dStart || '';
-      document.getElementById('editEnd').value = item.dEnd || '';
-      document.getElementById('editPeople').value = item.people || 1;
-      document.getElementById('editPayment').value = item.payment || '';
-      document.getElementById('editCard').value = item.paymentCard || '';
-      document.getElementById('editAdminComment').value = '';
-      const rateSel = document.getElementById('editPerDiemRate');
-      rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
-      rateSel.value = item.perDiemRate || '';
-      const planContainer = document.getElementById('editPlanRows');
-      planContainer.innerHTML = '';
-      const planItems = parsePlanItems(item.planItemsJson);
-      if (planItems.length === 0) addPlanRowTo('editPlanRows');
-      else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
-      editModalInstance.show();
+      if (!item) { showToast("Дані заявки не знайдено"); return; }
+      try {
+        document.getElementById('editReqId').value = reqId;
+        document.getElementById('editCompany').value = item.company || '';
+        document.getElementById('editDept').value = item.dept || '';
+        document.getElementById('editPurpose').value = item.purpose || '';
+        document.getElementById('editStart').value = item.dStart || '';
+        document.getElementById('editEnd').value = item.dEnd || '';
+        document.getElementById('editPeople').value = item.people || 1;
+        document.getElementById('editPayment').value = item.payment || '';
+        document.getElementById('editCard').value = item.paymentCard || '';
+        document.getElementById('editAdminComment').value = '';
+        const rateSel = document.getElementById('editPerDiemRate');
+        rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
+        rateSel.value = item.perDiemRate || '';
+        const planContainer = document.getElementById('editPlanRows');
+        planContainer.innerHTML = '';
+        const planItems = parsePlanItems(item.planItemsJson);
+        if (planItems.length === 0) addPlanRowTo('editPlanRows');
+        else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
+        editModalInstance.show();
+      } catch (e) {
+        console.error(e);
+        showToast("Помилка: " + e);
+      }
     }
 
     async function submitEditApprove(btn) {
@@ -1023,7 +1029,7 @@
         footerHtml += `
             <div class="d-flex gap-2 mt-2 no-modal">
                 <button class="btn btn-outline-warning flex-grow-1" onclick="openClarifyModal('${item.reqId}')">Потребує уточнення</button>
-                <button class="btn btn-outline-primary flex-grow-1" onclick="openEditModal('${item.reqId}')">Редагувати та погодити</button>
+                <button class="btn btn-outline-primary flex-grow-1" onclick="openEditModal('${item.reqId}', event)">Редагувати та погодити</button>
             </div>`;
       } else {
         if (item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
