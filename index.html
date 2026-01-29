@@ -550,8 +550,8 @@
           return;
         }
         const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1;
-        const rate = getPerDiemRateForDays(rateName, diffDays);
-        const dailySum = diffDays * rate * people;
+        const rates = getPerDiemRates(rateName);
+        const dailySum = calcDailyTotalByDays(diffDays, people, rates.rateShort, rates.rateLong);
         dailyEl.innerText = dailySum.toLocaleString() + ' ₴';
         totalEl.innerText = (dailySum + cost + planTotal).toLocaleString() + ' ₴';
       } else {
@@ -560,10 +560,18 @@
       }
     }
 
-    function getPerDiemRateForDays(name, days) {
+    function getPerDiemRates(name) {
       const item = DAILY_RATES.find(r => String(r.name) === String(name));
-      if (!item) return 0;
-      return (Number(days) || 0) <= 3 ? (Number(item.rateShort) || 0) : (Number(item.rateLong) || 0);
+      if (!item) return { rateShort: 0, rateLong: 0 };
+      return { rateShort: Number(item.rateShort) || 0, rateLong: Number(item.rateLong) || 0 };
+    }
+
+    function calcDailyTotalByDays(days, people, rateShort, rateLong) {
+      const d = Number(days) || 0;
+      const p = parseInt(people) || 1;
+      const firstDays = Math.min(d, 3);
+      const restDays = Math.max(d - 3, 0);
+      return (firstDays * (Number(rateShort) || 0) + restDays * (Number(rateLong) || 0)) * p;
     }
 
     function getTripDays(dStart, dEnd) {
@@ -664,7 +672,8 @@
       const perDiemEl = document.getElementById('perDiemRate');
       const days = getTripDays(form.dateStart.value, form.dateEnd.value);
       const perDiemName = perDiemEl ? perDiemEl.value : "";
-      const perDiemRate = getPerDiemRateForDays(perDiemName, days);
+      const rates = getPerDiemRates(perDiemName);
+      const perDiemRate = rates.rateLong;
       const data = {
         userId: USER_ID, userName: USER_NAME,
         company: form.company.value, department: form.department.value, purpose: form.purpose.value,
@@ -879,7 +888,8 @@
       setBtnLoading(btn, true);
       const days = getTripDays(startEl.value, endEl.value);
       const perDiemName = rateEl ? rateEl.value : "";
-      const perDiemRate = getPerDiemRateForDays(perDiemName, days);
+      const rates = getPerDiemRates(perDiemName);
+      const perDiemRate = rates.rateLong;
       const data = {
         company: companyEl.value,
         department: deptEl.value,
