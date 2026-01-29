@@ -410,6 +410,7 @@
       localStorage.removeItem('trip_user_v2_' + USER_ID); // Чистим кэш
       localStorage.removeItem('trip_depts');
       localStorage.removeItem('trip_rates_v2');
+      localStorage.removeItem('trip_rates');
       localStorage.removeItem('trip_exp_opts');
       try { await sendPost('clearCache', { userId: USER_ID }); } catch (e) {}
       fetchUserData(false);
@@ -514,6 +515,12 @@
               <button type="submit" id="btnSubmit" class="btn btn-primary w-100 py-3 rounded-pill fw-bold shadow">Створити заявку</button>
             </form>
           </div>`;
+      const rateSel = document.getElementById('perDiemRate');
+      if (rateSel && !rateSel.value && DAILY_RATES.length) {
+        rateSel.value = DAILY_RATES[0].name;
+      }
+      addPlanRow();
+      calcTotal();
     }
 
     function calcTotal() {
