@@ -331,7 +331,7 @@
       // 1. Пробуем загрузиться мгновенно из памяти телефона
       const cachedUser = localStorage.getItem('trip_user_v2_' + USER_ID);
       const cachedDepts = localStorage.getItem('trip_depts');
-      const cachedRates = localStorage.getItem('trip_rates');
+      const cachedRates = localStorage.getItem('trip_rates_v2');
       const cachedOptions = localStorage.getItem('trip_exp_opts');
 
       if (cachedUser && cachedDepts && cachedRates && cachedOptions) {
@@ -372,7 +372,7 @@
         // Сохраняем в память телефона
         localStorage.setItem('trip_user_v2_' + USER_ID, JSON.stringify(userData));
       localStorage.setItem('trip_depts', JSON.stringify(deptData));
-      localStorage.setItem('trip_rates', JSON.stringify(rateData));
+      localStorage.setItem('trip_rates_v2', JSON.stringify(rateData));
       localStorage.setItem('trip_exp_opts', JSON.stringify(optData));
 
         // Если это не фоновое обновление, применяем и рендерим
@@ -409,7 +409,7 @@
     async function forceReload() {
       localStorage.removeItem('trip_user_v2_' + USER_ID); // Чистим кэш
       localStorage.removeItem('trip_depts');
-      localStorage.removeItem('trip_rates');
+      localStorage.removeItem('trip_rates_v2');
       localStorage.removeItem('trip_exp_opts');
       try { await sendPost('clearCache', { userId: USER_ID }); } catch (e) {}
       fetchUserData(false);
@@ -472,7 +472,7 @@
         ? USER_CARDS.map(c => `<option value="${c}">${c}</option>`).join('')
         : `<option value="" disabled selected>Немає карт</option>`;
       const rateOptions = DAILY_RATES.length
-        ? DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('')
+        ? DAILY_RATES.map(r => `<option value="${r.name}">${r.name}</option>`).join('')
         : `<option value="" disabled selected>Немає ставок</option>`;
       const expenseOptions = EXPENSE_OPTIONS.length
         ? EXPENSE_OPTIONS.map(o => `<option value="${o}">${o}</option>`).join('')
@@ -529,7 +529,7 @@
       const dE = dEndEl.value;
       const cost = 0;
       const people = parseInt(peopleEl.value) || 1;
-      const rate = parseFloat(rateEl.value) || 0;
+      const rateName = rateEl.value;
       const planTotal = calcPlanTotal();
       planEl.innerText = planTotal.toLocaleString() + ' ₴';
 
@@ -543,6 +543,7 @@
           return;
         }
         const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1;
+        const rate = getPerDiemRateForDays(rateName, diffDays);
         const dailySum = diffDays * rate * people;
         dailyEl.innerText = dailySum.toLocaleString() + ' ₴';
         totalEl.innerText = (dailySum + cost + planTotal).toLocaleString() + ' ₴';
@@ -550,6 +551,19 @@
         dailyEl.innerText = '0 ₴';
         totalEl.innerText = (cost + planTotal).toLocaleString() + ' ₴';
       }
+    }
+
+    function getPerDiemRateForDays(name, days) {
+      const item = DAILY_RATES.find(r => String(r.name) === String(name));
+      if (!item) return 0;
+      return (Number(days) || 0) <= 3 ? (Number(item.rateShort) || 0) : (Number(item.rateLong) || 0);
+    }
+
+    function getTripDays(dStart, dEnd) {
+      if (!dStart || !dEnd) return 0;
+      const start = new Date(dStart);
+      const end = new Date(dEnd);
+      return Math.ceil(Math.abs(end - start) / (86400000)) + 1;
     }
 
     function calcPlanTotal() {
@@ -641,6 +655,9 @@
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
       const perDiemEl = document.getElementById('perDiemRate');
+      const days = getTripDays(form.dateStart.value, form.dateEnd.value);
+      const perDiemName = perDiemEl ? perDiemEl.value : "";
+      const perDiemRate = getPerDiemRateForDays(perDiemName, days);
       const data = {
         userId: USER_ID, userName: USER_NAME,
         company: form.company.value, department: form.department.value, purpose: form.purpose.value,
@@ -649,8 +666,8 @@
         transportType: "", transportCost: 0,
         peopleCount: form.peopleCount.value, paymentMethod: form.paymentMethod.value,
         paymentCard: form.paymentCard ? form.paymentCard.value : "",
-        perDiemRate: perDiemEl ? perDiemEl.value : "",
-        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(perDiemEl ? perDiemEl.value : "")) || {}).name || "",
+        perDiemRate: perDiemRate,
+        perDiemName: perDiemName,
         planItems: collectPlanItems()
       };
 
@@ -660,7 +677,7 @@
         btn.innerHTML = 'Створити заявку';
         return;
       }
-      if (!data.perDiemRate) {
+      if (!data.perDiemName) {
         showToast("Оберіть ставку добових");
         btn.disabled = false;
         btn.innerHTML = 'Створити заявку';
@@ -818,8 +835,8 @@
         setElValue('editAdminComment', '');
         const rateSel = document.getElementById('editPerDiemRate');
         if (rateSel) {
-          rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.rate}">${r.name}</option>`).join('');
-          rateSel.value = item.perDiemRate || '';
+          rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
+          rateSel.value = item.perDiemName || '';
         }
         const planContainer = document.getElementById('editPlanRows');
         if (planContainer) planContainer.innerHTML = '';
@@ -853,6 +870,9 @@
       }
       if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
       setBtnLoading(btn, true);
+      const days = getTripDays(startEl.value, endEl.value);
+      const perDiemName = rateEl ? rateEl.value : "";
+      const perDiemRate = getPerDiemRateForDays(perDiemName, days);
       const data = {
         company: companyEl.value,
         department: deptEl.value,
@@ -863,8 +883,8 @@
         paymentMethod: paymentEl.value,
         paymentCard: cardEl.value,
         adminComment: adminCommentVal,
-        perDiemRate: rateEl ? rateEl.value : "",
-        perDiemName: (DAILY_RATES.find(r => String(r.rate) === String(rateEl ? rateEl.value : "")) || {}).name || "",
+        perDiemRate: perDiemRate,
+        perDiemName: perDiemName,
         planItemsJson: JSON.stringify(collectPlanItemsFrom('editPlanRows')),
         planItemsTotal: collectPlanItemsFrom('editPlanRows').reduce((s, i) => s + (Number(i.amount) || 0), 0)
       };
