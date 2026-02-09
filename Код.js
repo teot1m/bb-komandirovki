@@ -555,18 +555,30 @@ function normId(v) {
   return String(v == null ? "" : v).trim().replace(/^'+/, "").replace(/\s+/g, "");
 }
 
+function withReqLock(reqId, fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return fn();
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
 function submitExpenses(reqId, userId, userName, expenses, logFn) {
   const log = logFn || function () {};
   log("submitExpenses start. reqId=" + reqId + " userId=" + userId + " userName=" + userName);
   if (!expenses || expenses.length === 0) throw new Error("Немає витрат");
-  const logsSheet = getLogsSheet();
-  const ids = logsSheet.getRange("C:C").getValues().flat();
-  const rowIndex = ids.findIndex(id => String(id) === String(reqId));
-  if (rowIndex === -1) throw new Error("Заявку не знайдено");
-  const r = rowIndex + 1;
-  const req = mapRowToObj(logsSheet.getRange(r, 1, 1, Math.max(logsSheet.getLastColumn(), COL.LOG_JSON)).getValues()[0]);
-  if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
-  if (req.status !== "Погоджено") throw new Error("Витрати можна додати лише після погодження");
+
+  return withReqLock(reqId, function () {
+    const logsSheet = getLogsSheet();
+    const ids = logsSheet.getRange("C:C").getValues().flat();
+    const rowIndex = ids.findIndex(id => String(id) === String(reqId));
+    if (rowIndex === -1) throw new Error("Заявку не знайдено");
+    const r = rowIndex + 1;
+    const req = mapRowToObj(logsSheet.getRange(r, 1, 1, Math.max(logsSheet.getLastColumn(), COL.LOG_JSON)).getValues()[0]);
+    if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
+    if (req.status !== "Погоджено") throw new Error("Витрати можна додати лише після погодження");
 
   const expenseSheet = getExpensesSheet();
   const batchId = new Date().getTime().toString();
@@ -648,6 +660,7 @@ function submitExpenses(reqId, userId, userName, expenses, logFn) {
     return { status: "success", message: "✅ Витрати надіслано, але файли не завантажені (немає доступу до Drive або папку не знайдено)." + extra };
   }
   return { status: "success", message: "✅ Витрати надіслано на затвердження." };
+  });
 }
 
 function decideExpense(expenseId, approver, decision) {
@@ -903,31 +916,33 @@ function hasUnresolvedAdditionalExpenses(reqId) {
 }
 
 function completeTrip(reqId, userId) {
-  const sheet = getLogsSheet();
-  const ids = sheet.getRange("C:C").getValues().flat();
-  const rowIndex = ids.findIndex(id => String(id) === String(reqId));
-  if (rowIndex === -1) throw new Error("Заявку не знайдено");
-  const r = rowIndex + 1;
-  const row = sheet.getRange(r, 1, 1, Math.max(sheet.getLastColumn(), COL.COMPLETED_AT)).getValues()[0];
-  const req = mapRowToObj(row);
-  if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
-  if (req.status !== "Погоджено") throw new Error("Завершити можна лише погоджену заявку");
+  return withReqLock(reqId, function () {
+    const sheet = getLogsSheet();
+    const ids = sheet.getRange("C:C").getValues().flat();
+    const rowIndex = ids.findIndex(id => String(id) === String(reqId));
+    if (rowIndex === -1) throw new Error("Заявку не знайдено");
+    const r = rowIndex + 1;
+    const row = sheet.getRange(r, 1, 1, Math.max(sheet.getLastColumn(), COL.COMPLETED_AT)).getValues()[0];
+    const req = mapRowToObj(row);
+    if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
+    if (req.status !== "Погоджено") throw new Error("Завершити можна лише погоджену заявку");
 
-  // Block closing when there are additional expenses not yet decided (anything except final statuses)
-  if (hasUnresolvedAdditionalExpenses(reqId)) {
-    throw new Error("У вас есть несогласованные дополнительные расходы. Дождитесь решения руководителя перед закрытием.");
-  }
+    // Block closing when there are additional expenses not yet decided (anything except final statuses)
+    if (hasUnresolvedAdditionalExpenses(reqId)) {
+      throw new Error("У вас есть несогласованные дополнительные расходы. Дождитесь решения руководителя перед закрытием.");
+    }
 
-  sheet.getRange(r, COL.STATUS).setValue("Завершено");
-  sheet.getRange(r, COL.COMPLETED_AT).setValue(nowTs());
-  appendLogEntry(sheet, r, {
-    type: "завершено",
-    userId: userId,
-    userName: req.userName,
-    date: nowTs(),
-    text: "Завершено"
+    sheet.getRange(r, COL.STATUS).setValue("Завершено");
+    sheet.getRange(r, COL.COMPLETED_AT).setValue(nowTs());
+    appendLogEntry(sheet, r, {
+      type: "завершено",
+      userId: userId,
+      userName: req.userName,
+      date: nowTs(),
+      text: "Завершено"
+    });
+    return "✅ Відрядження завершено.";
   });
-  return "✅ Відрядження завершено.";
 }
 
 function calculateDailyTotal(dStart, dEnd, people, rate) {
