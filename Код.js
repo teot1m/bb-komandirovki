@@ -551,6 +551,10 @@ function submitClarificationAnswer(reqId, userId, answer) {
   return "✅ Відповідь відправлено.";
 }
 
+function normId(v) {
+  return String(v == null ? "" : v).trim().replace(/^'+/, "").replace(/\s+/g, "");
+}
+
 function submitExpenses(reqId, userId, userName, expenses, logFn) {
   const log = logFn || function () {};
   log("submitExpenses start. reqId=" + reqId + " userId=" + userId + " userName=" + userName);
@@ -906,7 +910,7 @@ function completeTrip(reqId, userId) {
   const r = rowIndex + 1;
   const row = sheet.getRange(r, 1, 1, Math.max(sheet.getLastColumn(), COL.COMPLETED_AT)).getValues()[0];
   const req = mapRowToObj(row);
-  if (String(req.userId) !== String(userId)) throw new Error("Немає доступу");
+  if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
   if (req.status !== "Погоджено") throw new Error("Завершити можна лише погоджену заявку");
 
   // Block closing when there are additional expenses not yet decided (anything except final statuses)
