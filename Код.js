@@ -145,6 +145,8 @@ function doPost(e) {
         result = { status: 'success', message: decideExpensesBatch(params.expenseIds, params.approver, params.decision, params.expenseItems) };
       } else if (params.action === 'completeTrip') {
         result = { status: 'success', message: completeTrip(params.rowId, params.userId) };
+      } else if (params.action === 'markPaid') {
+        result = { status: 'success', message: markPaid(params.rowId, params.adminId, params.adminName) };
       } else if (params.action === 'clearCache') {
         result = { status: 'success', message: clearCache(params.userId) };
       }
@@ -1002,6 +1004,44 @@ function completeTrip(reqId, userId) {
       text: "Завершено"
     });
     return "✅ Відрядження завершено.";
+  });
+}
+
+function markPaid(reqId, adminId, adminName) {
+  const adminInfo = getUserInfo(adminId);
+  if (!adminInfo || adminInfo.role !== 'Адмін') throw new Error("Немає доступу");
+  const allowed = String(adminInfo.company).split(',').map(c => c.trim());
+
+  return withReqLock(reqId, function () {
+    const sheet = getLogsSheet();
+    const ids = sheet.getRange("C:C").getValues().flat();
+    const rowIndex = ids.findIndex(id => String(id) === String(reqId));
+    if (rowIndex === -1) throw new Error("Заявку не знайдено");
+    const r = rowIndex + 1;
+
+    const row = sheet.getRange(r, 1, 1, Math.max(sheet.getLastColumn(), COL.LOG_JSON)).getValues()[0];
+    const req = mapRowToObj(row);
+    if (!allowed.includes(req.company)) throw new Error("Немає доступу");
+
+    if (req.status === "Оплачено") throw new Error("Вже оплачено");
+    if (req.status !== "Погоджено") throw new Error("Оплатити можна лише погоджену заявку");
+
+    sheet.getRange(r, COL.STATUS).setValue("Оплачено");
+    sheet.getRange(r, COL.UPDATED_AT).setValue(nowTs());
+    appendLogEntry(sheet, r, {
+      type: "оплачено",
+      userId: adminId,
+      userName: adminName,
+      date: nowTs(),
+      text: "Оплачено"
+    });
+
+    // optional notification
+    try {
+      sendTelegramMessage(req.userId, "✅ Ваша командировка оплачена/закрыта бухгалтерией");
+    } catch (e) {}
+
+    return "✅ Оплачено";
   });
 }
 

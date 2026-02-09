@@ -189,6 +189,25 @@
     </div>
   </div>
 
+  <!-- Confirm Complete Trip Modal -->
+  <div class="modal fade" id="confirmCompleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title">Підтвердження</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          Ви впевнені, що хочете закрити відрядження? Після цієї дії ви не зможете додати нові додаткові витрати або змінити поточні. Будь ласка, переконайтеся, що всі чеки та витрати внесені.
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасування</button>
+          <button type="button" class="btn btn-success" id="confirmCompleteBtn">Закрити відрядження</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Clarification Modal -->
   <div class="modal fade" id="clarifyModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -727,8 +746,9 @@
       });
       sorted.forEach(item => { REQUEST_CACHE[item.reqId] = item; });
 
-      const active = sorted.filter(i => i.status !== 'Завершено');
-      const completed = sorted.filter(i => i.status === 'Завершено');
+      const COMPLETED_STATUSES = { 'Завершено': true, 'Оплачено': true, 'Відхилено': true };
+      const active = sorted.filter(i => !COMPLETED_STATUSES[i.status]);
+      const completed = sorted.filter(i => COMPLETED_STATUSES[i.status]);
 
       let html = '';
       html += active.map(item => renderCard(item, false)).join('');
@@ -737,7 +757,7 @@
         html += `
           <div class="card p-3 mt-2">
             <div class="d-flex justify-content-between align-items-center">
-              <strong>Завершені відрядження (${completed.length})</strong>
+              <strong>Архів (${completed.length})</strong>
               <button class="btn btn-sm btn-outline-secondary" onclick="toggleCompleted()">Показати/Сховати</button>
             </div>
             <div id="completedBlock" class="${collapsed ? 'd-none' : ''} mt-2">
@@ -778,28 +798,75 @@
         html += expensesGrouped.map(item => renderExpenseGroupCard(item)).join('');
       }
       if (sortedReq.length > 0) {
-        const activeReq = sortedReq.filter(i => i.status !== 'Завершено');
-        const completedReq = sortedReq.filter(i => i.status === 'Завершено');
+        const APPROVAL = { 'Нова': true, 'Уточнено': true, 'Потребує уточнення': true };
+        const ACCOUNTING = { 'Погоджено': true };
+        const ARCHIVE = { 'Оплачено': true, 'Відхилено': true, 'Завершено': true };
+
+        const approvalReq = sortedReq.filter(i => APPROVAL[i.status]);
+        const accountingReq = sortedReq.filter(i => ACCOUNTING[i.status]);
+        const archiveReq = sortedReq.filter(i => ARCHIVE[i.status]);
+
+        const collapsedApproval = localStorage.getItem('trip_admin_approval_collapsed') !== '0';
+        const collapsedAccounting = localStorage.getItem('trip_admin_accounting_collapsed') !== '0';
+        const collapsedArchive = localStorage.getItem('trip_admin_archive_collapsed') !== '0';
+
         html += `<div class="fw-bold text-muted ${expensesGrouped.length ? 'mt-4' : ''} mb-2">Заявки</div>`;
-        html += activeReq.map(item => renderCard(item, true)).join('');
-        if (completedReq.length > 0) {
-          const collapsed = localStorage.getItem('trip_completed_admin_collapsed') !== '0';
-          html += `
-            <div class="card p-3 mt-2">
-              <div class="d-flex justify-content-between align-items-center">
-                <strong>Завершені відрядження (${completedReq.length})</strong>
-                <button class="btn btn-sm btn-outline-secondary" onclick="toggleCompletedAdmin()">Показати/Сховати</button>
-              </div>
-              <div id="completedAdminBlock" class="${collapsed ? 'd-none' : ''} mt-2">
-                ${completedReq.map(item => renderCard(item, true)).join('')}
-              </div>
+
+        // 1) Approval
+        html += `
+          <div class="card p-3 mt-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>📂 Требують затвердження (${approvalReq.length})</strong>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleAdminSection('approval')">Показати/Сховати</button>
             </div>
-          `;
-        }
+            <div id="adminApprovalBlock" class="${collapsedApproval ? 'd-none' : ''} mt-2">
+              ${approvalReq.map(item => renderCard(item, true)).join('')}
+            </div>
+          </div>
+        `;
+
+        // 2) Accounting
+        html += `
+          <div class="card p-3 mt-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>📂 На оплату (${accountingReq.length})</strong>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleAdminSection('accounting')">Показати/Сховати</button>
+            </div>
+            <div id="adminAccountingBlock" class="${collapsedAccounting ? 'd-none' : ''} mt-2">
+              ${accountingReq.map(item => renderCard(item, true)).join('')}
+            </div>
+          </div>
+        `;
+
+        // 3) Archive
+        html += `
+          <div class="card p-3 mt-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>📂 Архів (${archiveReq.length})</strong>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleAdminSection('archive')">Показати/Сховати</button>
+            </div>
+            <div id="adminArchiveBlock" class="${collapsedArchive ? 'd-none' : ''} mt-2">
+              ${archiveReq.map(item => renderCard(item, true)).join('')}
+            </div>
+          </div>
+        `;
       }
       if (!html) html = '<div class="text-center text-muted mt-5">Немає заявок</div>';
       document.getElementById('appContent').innerHTML = html;
       }
+
+    async function markPaid(reqId, btn) {
+      if (!confirm("Підтвердити оплату?")) return;
+      const card = document.getElementById(`card-${reqId}`);
+      if (card) card.style.opacity = '0.5';
+      setBtnLoading(btn, true);
+      try {
+        const res = await sendPost('markPaid', { rowId: reqId, adminId: USER_ID, adminName: USER_NAME });
+        if (res.status === 'success') { showToast(res.message); loadApproverPending(); }
+        else { showToast(res.message); if (card) card.style.opacity = '1'; }
+      } catch (err) { showToast("Помилка: " + err); if (card) card.style.opacity = '1'; }
+      setBtnLoading(btn, false);
+    }
 
     async function makeDecision(reqId, decision, btn) {
       if (!confirm(decision === 'approve' ? "Погодити?" : "Відхилити?")) return;
@@ -1118,8 +1185,18 @@
                 <button class="btn btn-outline-primary flex-grow-1" onclick="openEditModal('${item.reqId}', event)">Редагувати та погодити</button>
             </div>`;
       } else {
-        if (item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
+        if (isApprover && item.status === 'Погоджено') {
+          footerHtml = `
+            <div class="d-flex gap-2 mt-3 pt-2 border-top no-modal">
+              <button class="btn btn-success flex-grow-1" onclick="markPaid('${item.reqId}', this)">💸 Підтвердити оплату</button>
+            </div>
+            <div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>
+          `;
+        } else {
+          if (item.status === 'Погоджено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-check2-all"></i> Погодив: ${item.approver}</div>`;
+        }
         if (item.status === 'Відхилено') footerHtml = `<div class="mt-2 text-danger small text-end fw-bold"><i class="bi bi-x-circle"></i> Відхилив: ${item.approver}</div>`;
+        if (item.status === 'Оплачено') footerHtml = `<div class="mt-2 text-success small text-end fw-bold"><i class="bi bi-cash-coin"></i> Оплачено</div>`;
       }
 
       let clarifyHtml = '';
@@ -1201,10 +1278,12 @@
       function getStatusBadge(s) {
         if (s === 'Нова') return '<span class="badge-status st-new">Нова</span>';
         if (s === 'Погоджено') return '<span class="badge-status st-approved">Погоджено</span>';
+        if (s === 'Оплачено') return '<span class="badge-status st-approved">Оплачено</span>';
         if (s === 'Потребує уточнення') return '<span class="badge-status st-clarify">Потребує уточнення</span>';
         if (s === 'Уточнено') return '<span class="badge-status st-clarified">Уточнено</span>';
         if (s === 'Завершено') return '<span class="badge-status st-completed">Завершено</span>';
-        return '<span class="badge-status st-rejected">Відхилено</span>';
+        if (s === 'Відхилено') return '<span class="badge-status st-rejected">Відхилено</span>';
+        return `<span class="badge-status st-rejected">${s || ''}</span>`;
       }
 
     function renderExpenseCard(item) {
@@ -1520,12 +1599,67 @@
       localStorage.setItem('trip_completed_collapsed', block.classList.contains('d-none') ? '1' : '0');
     }
 
-    function toggleCompletedAdmin() {
-      const block = document.getElementById('completedAdminBlock');
+    function toggleAdminSection(section) {
+      const map = {
+        approval: { id: 'adminApprovalBlock', key: 'trip_admin_approval_collapsed' },
+        accounting: { id: 'adminAccountingBlock', key: 'trip_admin_accounting_collapsed' },
+        archive: { id: 'adminArchiveBlock', key: 'trip_admin_archive_collapsed' }
+      };
+      const cfg = map[section];
+      if (!cfg) return;
+      const block = document.getElementById(cfg.id);
       if (!block) return;
       block.classList.toggle('d-none');
-      localStorage.setItem('trip_completed_admin_collapsed', block.classList.contains('d-none') ? '1' : '0');
+      localStorage.setItem(cfg.key, block.classList.contains('d-none') ? '1' : '0');
     }
+
+    // backward compatibility (old name)
+    function toggleCompletedAdmin() {
+      toggleAdminSection('approval');
+    }
+
+    // Confirm-close state
+    let PENDING_COMPLETE_REQ_ID = null;
+    let PENDING_COMPLETE_BTN = null;
+
+    function openCompleteConfirm(reqId, btn) {
+      PENDING_COMPLETE_REQ_ID = reqId;
+      PENDING_COMPLETE_BTN = btn || null;
+      const modalEl = document.getElementById('confirmCompleteModal');
+      if (!modalEl) return;
+      const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+      m.show();
+    }
+
+    async function doCompleteTrip() {
+      const reqId = PENDING_COMPLETE_REQ_ID;
+      const btn = PENDING_COMPLETE_BTN;
+      if (!reqId) return;
+
+      setBtnLoading(btn, true);
+      try {
+        const res = await sendPost('completeTrip', { rowId: reqId, userId: USER_ID });
+        if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
+        else showToast(res.message);
+      } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
+
+      // reset
+      PENDING_COMPLETE_REQ_ID = null;
+      PENDING_COMPLETE_BTN = null;
+    }
+
+    // Wire modal confirm button
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('confirmCompleteBtn');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const modalEl = document.getElementById('confirmCompleteModal');
+          try { bootstrap.Modal.getOrCreateInstance(modalEl).hide(); } catch (e) {}
+          await doCompleteTrip();
+        });
+      }
+    });
 
     async function completeTrip(reqId, btn) {
       // Client-side guard (backend also enforces): don't allow closing if there are unresolved additional expenses.
@@ -1533,7 +1667,8 @@
         const expRes = await fetch(`${API_URL}?action=getExpensesByReqId&userId=${USER_ID}&reqId=${reqId}`);
         const expenses = await expRes.json();
         const arr = Array.isArray(expenses) ? expenses : [];
-        const blocking = arr.filter(e => String((e && e.status) || '') !== 'Погоджено');
+        const FINAL = { 'Погоджено': true, 'Відхилено': true };
+        const blocking = arr.filter(e => !FINAL[String((e && e.status) || '')]);
         if (blocking.length) {
           showToast('У вас є неузгоджені додаткові витрати. Дочекайтесь рішення керівника перед закриттям.');
           return;
@@ -1542,14 +1677,7 @@
         // ignore; backend will still enforce
       }
 
-      if (!confirm("Завершити відрядження?")) return;
-      setBtnLoading(btn, true);
-      try {
-        const res = await sendPost('completeTrip', { rowId: reqId, userId: USER_ID });
-        if (res.status === 'success') { showToast(res.message); loadUserHistory(); }
-        else showToast(res.message);
-      } catch (err) { showToast("Помилка: " + err); }
-      setBtnLoading(btn, false);
+      openCompleteConfirm(reqId, btn);
     }
   </script>
 </body>
