@@ -1,5 +1,60 @@
+const PROJECT_KEY = 'bluebird-trips';
+
 const SPREADSHEET_ID = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 const TELEGRAM_BOT_TOKEN = PropertiesService.getScriptProperties().getProperty('TELEGRAM_BOT_TOKEN');
+
+function getOwnerTg_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('TG_BOT_TOKEN') || TELEGRAM_BOT_TOKEN || '';
+  const chatId = props.getProperty('TG_OWNER_CHAT_ID') || '';
+  if (!token || !chatId) return null;
+  return { token, chatId };
+}
+
+function notifyOwnerError_(ctx, err) {
+  const tg = getOwnerTg_();
+  if (!tg) return;
+
+  const msg = String(err && err.stack ? err.stack : (err && err.message ? err.message : err));
+  const payload = {
+    project: PROJECT_KEY,
+    at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'),
+    ctx: ctx || {},
+    error: msg,
+  };
+
+  const text =
+    '🚨 Помилка виконання\n' +
+    'Проєкт: ' + PROJECT_KEY + '\n' +
+    (ctx && ctx.action ? ('Дія: ' + ctx.action + '\n') : '') +
+    (ctx && ctx.userId ? ('userId: ' + ctx.userId + '\n') : '') +
+    (ctx && ctx.userName ? ('user: ' + ctx.userName + '\n') : '') +
+    (ctx && ctx.reqId ? ('reqId: ' + ctx.reqId + '\n') : '') +
+    '\n' +
+    msg;
+
+  // anti-spam dedupe (5 min)
+  try {
+    const cache = CacheService.getScriptCache();
+    const hash = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text)).slice(0, 64);
+    const key = 'err:' + hash;
+    if (cache.get(key)) return;
+    cache.put(key, '1', 300);
+  } catch (e) {}
+
+  try {
+    const url = 'https://api.telegram.org/bot' + tg.token + '/sendMessage';
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      payload: {
+        chat_id: tg.chatId,
+        text: text.length > 3800 ? (text.slice(0, 3800) + '…') : text,
+        disable_web_page_preview: 'true',
+      },
+      muteHttpExceptions: true,
+    });
+  } catch (e) {}
+}
 const DRIVE_FOLDER_ID = PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_ID');
 const DRIVE_FOLDER_NAME = PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_NAME');
 const GDRIVE_SA_CLIENT_EMAIL = PropertiesService.getScriptProperties().getProperty('GDRIVE_SA_CLIENT_EMAIL');
@@ -53,6 +108,7 @@ function doGet(e) {
       result = getExpensesByReqId(e.parameter.reqId, userId);
     }
   } catch (err) {
+    notifyOwnerError_({ entry: 'doGet', action: action, userId: userId, reqId: e && e.parameter ? e.parameter.reqId : '' }, err);
     result = { error: err.toString() };
   }
 
@@ -96,6 +152,10 @@ function doPost(e) {
       result = { status: 'error', message: "Сервер зайнятий. Спробуйте ще раз." };
     }
   } catch (err) {
+    try {
+      const safeParams = (() => { try { return JSON.parse(e.postData.contents); } catch (e2) { return {}; } })();
+      notifyOwnerError_({ entry: 'doPost', action: safeParams.action, userId: safeParams.userId || safeParams.approverId || safeParams.adminId, userName: safeParams.userName || safeParams.approver || safeParams.adminName, reqId: safeParams.rowId || safeParams.reqId, expenseId: safeParams.expenseId }, err);
+    } catch (e3) {}
     result = { status: 'error', message: err.toString() };
   } finally {
     lock.releaseLock();
