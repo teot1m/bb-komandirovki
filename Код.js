@@ -565,7 +565,7 @@ function submitExpenses(reqId, userId, userName, expenses, logFn) {
   if (rowIndex === -1) throw new Error("Заявку не знайдено");
   const r = rowIndex + 1;
   const req = mapRowToObj(logsSheet.getRange(r, 1, 1, Math.max(logsSheet.getLastColumn(), COL.LOG_JSON)).getValues()[0]);
-  if (String(req.userId) !== String(userId)) throw new Error("Немає доступу");
+  if (normId(req.userId) !== normId(userId)) throw new Error("Немає доступу");
   if (req.status !== "Погоджено") throw new Error("Витрати можна додати лише після погодження");
 
   const expenseSheet = getExpensesSheet();
