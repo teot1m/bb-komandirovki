@@ -169,6 +169,16 @@ function doPost(e) {
 
 // --- КЭШИРОВАНИЕ И ДАННЫЕ ---
 function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
+
+function parseMoney(val) {
+  if (val === null || val === undefined) return 0;
+  if (val instanceof Date) return 0; // date-typed garbage in amount cells
+  if (typeof val === 'number') return isFinite(val) ? val : 0;
+  const s = String(val).trim().replace(/\s+/g, '').replace(',', '.');
+  const cleaned = s.replace(/[^0-9.+-]/g, '');
+  const n = parseFloat(cleaned);
+  return isFinite(n) ? n : 0;
+}
 function getLogsSheet() {
   const sheet = getSS().getSheetByName(SHEET_LOGS);
   ensureLogsHeaders(sheet);
@@ -662,6 +672,9 @@ function submitExpenses(reqId, userId, userName, expenses, logFn) {
   let folderError = driveInfo.error || "";
 
   expenses.forEach(exp => {
+    const normAmount = parseMoney(exp.amount);
+    // IMPORTANT: store as text to avoid Sheets auto-converting amounts to Date when column is formatted oddly
+    const normAmountText = "'" + String(normAmount);
     const files = exp.files || [];
     const urls = [];
     log("Expense item: name=" + exp.name + " amount=" + exp.amount + " files=" + files.length + " link=" + (exp.link || ""));
@@ -708,7 +721,7 @@ function submitExpenses(reqId, userId, userName, expenses, logFn) {
     const expenseId = batchId + "_" + Math.floor(Math.random() * 100000);
     expenseSheet.appendRow([
       expenseId, reqId, userId, userName, ts,
-      exp.name, exp.amount, exp.description || "", exp.link || "",
+      exp.name, normAmountText, exp.description || "", exp.link || "",
       urls.join(", "), "Нова", "", "", req.company
     ]);
   });
@@ -773,7 +786,8 @@ function decideExpensesBatch(expenseIds, approver, decision, expenseItems) {
     const r = rowIndex + 1;
     const updAmount = updates[String(expenseId)];
     if (updAmount !== undefined && updAmount !== null && updAmount !== "") {
-      sheet.getRange(r, 7).setValue(Number(updAmount) || 0);
+      const v = parseMoney(updAmount);
+      sheet.getRange(r, 7).setValue("'" + String(v));
     }
     sheet.getRange(r, 11).setValue(status);
     sheet.getRange(r, 12).setValue(approver);
@@ -937,7 +951,7 @@ function buildApprovedExpensesMap() {
   data.forEach(r => {
     const reqId = r[1];
     const status = r[10];
-    const amount = Number(r[6]) || 0;
+    const amount = parseMoney(r[6]);
     if (status === "Погоджено") {
       if (!map[reqId]) map[reqId] = { sum: 0, items: [] };
       map[reqId].sum += amount;
