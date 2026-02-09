@@ -929,7 +929,7 @@ function completeTrip(reqId, userId) {
 
     // Block closing when there are additional expenses not yet decided (anything except final statuses)
     if (hasUnresolvedAdditionalExpenses(reqId)) {
-      throw new Error("У вас есть несогласованные дополнительные расходы. Дождитесь решения руководителя перед закрытием.");
+      throw new Error("У вас є неузгоджені додаткові витрати. Дочекайтесь рішення керівника перед закриттям.");
     }
 
     sheet.getRange(r, COL.STATUS).setValue("Завершено");

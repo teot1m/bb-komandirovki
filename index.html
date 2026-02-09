@@ -1535,7 +1535,7 @@
         const arr = Array.isArray(expenses) ? expenses : [];
         const blocking = arr.filter(e => String((e && e.status) || '') !== 'Погоджено');
         if (blocking.length) {
-          showToast('У вас есть несогласованные дополнительные расходы. Дождитесь решения руководителя перед закрытием.');
+          showToast('У вас є неузгоджені додаткові витрати. Дочекайтесь рішення керівника перед закриттям.');
           return;
         }
       } catch (e) {
