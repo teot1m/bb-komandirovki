@@ -1528,6 +1528,20 @@
     }
 
     async function completeTrip(reqId, btn) {
+      // Client-side guard (backend also enforces): don't allow closing if there are unresolved additional expenses.
+      try {
+        const expRes = await fetch(`${API_URL}?action=getExpensesByReqId&userId=${USER_ID}&reqId=${reqId}`);
+        const expenses = await expRes.json();
+        const arr = Array.isArray(expenses) ? expenses : [];
+        const blocking = arr.filter(e => String((e && e.status) || '') !== 'Погоджено');
+        if (blocking.length) {
+          showToast('У вас есть несогласованные дополнительные расходы. Дождитесь решения руководителя перед закрытием.');
+          return;
+        }
+      } catch (e) {
+        // ignore; backend will still enforce
+      }
+
       if (!confirm("Завершити відрядження?")) return;
       setBtnLoading(btn, true);
       try {
