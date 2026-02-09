@@ -884,7 +884,8 @@ function addApprovedExpenses(req, approvedMap) {
 }
 
 function hasUnresolvedAdditionalExpenses(reqId) {
-  const FINAL = { "Погоджено": true, "Відхилено": true };
+  // Only "Погоджено" is final for closing. Rejected expenses still block completion.
+  const FINAL = { "Погоджено": true };
   const sheet = getExpensesSheet();
   const data = sheet.getDataRange().getValues();
   data.shift();
