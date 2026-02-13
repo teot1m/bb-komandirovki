@@ -243,11 +243,11 @@
           <input type="hidden" id="editReqId">
           <div class="mb-2">
             <label class="small text-muted fw-bold">Компанія</label>
-            <input type="text" class="form-control" id="editCompany">
+            <select class="form-select fw-bold" id="editCompany"></select>
           </div>
           <div class="mb-2">
             <label class="small text-muted fw-bold">Відділ</label>
-            <input type="text" class="form-control" id="editDept">
+            <select class="form-select" id="editDept"></select>
           </div>
           <div class="mb-2">
             <label class="small text-muted fw-bold">Мета</label>
@@ -270,7 +270,10 @@
             </div>
             <div class="col-6">
               <label class="small text-muted fw-bold">Оплата</label>
-              <input type="text" class="form-control" id="editPayment">
+              <select class="form-select" id="editPayment" onchange="toggleCardSelectEdit(this.value)">
+                <option value="Карта">💳 На карту</option>
+                <option value="Готівка">💵 Готівка</option>
+              </select>
             </div>
           </div>
           <div class="mb-2">
@@ -283,9 +286,9 @@
             <button type="button" class="btn btn-light w-100 mt-2" onclick="addPlanRowTo('editPlanRows')">+ Додати
               витрату</button>
           </div>
-          <div class="mb-2">
-            <label class="small text-muted fw-bold">Карта (за потреби)</label>
-            <input type="text" class="form-control" id="editCard" placeholder="Номер або назва карти">
+          <div class="mb-2" id="editCardSelectBlock">
+            <label class="small text-muted fw-bold">Карта для зарахування</label>
+            <select class="form-select" id="editCard"></select>
           </div>
           <div class="mb-2" id="editAdminCommentBlock">
             <label class="small text-muted fw-bold">Коментар адміністратора (обов'язково)</label>
@@ -637,6 +640,18 @@
       }
     }
 
+    function toggleCardSelectEdit(method) {
+      const block = document.getElementById('editCardSelectBlock');
+      if (!block) return;
+      if (method === 'Карта') {
+        block.classList.remove('d-none');
+      } else {
+        const sel = block.querySelector('select');
+        if (sel) sel.value = "";
+        block.classList.add('d-none');
+      }
+    }
+
     function addPlanRow() {
       addPlanRowTo('planRows');
     }
@@ -918,19 +933,53 @@
 
     function fillEditModalFromItem(reqId, item) {
       setElValue('editReqId', reqId);
-      setElValue('editCompany', item.company || '');
-      setElValue('editDept', item.dept || '');
+
+      // Company select (same as create)
+      const companySel = document.getElementById('editCompany');
+      if (companySel) {
+        const companyOpts = MY_COMPANIES.length
+          ? MY_COMPANIES.map(c => `<option value="${c}">${c}</option>`).join('')
+          : `<option value="" disabled selected>Немає доступу до компаній</option>`;
+        companySel.innerHTML = companyOpts;
+        companySel.value = item.company || (MY_COMPANIES[0] || '');
+      }
+
+      // Department select (same as create)
+      const deptSel = document.getElementById('editDept');
+      if (deptSel) {
+        const deptOpts = DEPARTMENTS.map(d => `<option value="${d}">${d}</option>`).join('');
+        deptSel.innerHTML = `<option value="" disabled>Оберіть відділ...</option>` + deptOpts;
+        deptSel.value = item.dept || '';
+      }
+
       setElValue('editPurpose', item.purpose || '');
       setElValue('editStart', item.dStart || '');
       setElValue('editEnd', item.dEnd || '');
       setElValue('editPeople', item.people || 1);
-      setElValue('editPayment', item.payment || '');
-      setElValue('editCard', item.paymentCard || '');
+
+      // Payment + card selects
+      const paymentSel = document.getElementById('editPayment');
+      if (paymentSel) {
+        paymentSel.value = item.payment || 'Карта';
+      }
+
+      const cardSel = document.getElementById('editCard');
+      if (cardSel) {
+        const cardOptions = USER_CARDS.length
+          ? USER_CARDS.map(c => `<option value="${c}">${c}</option>`).join('')
+          : `<option value="" disabled selected>Немає карт</option>`;
+        cardSel.innerHTML = cardOptions;
+        cardSel.value = item.paymentCard || (USER_CARDS[0] || '');
+      }
+
+      toggleCardSelectEdit((item.payment || 'Карта'));
+
       const rateSel = document.getElementById('editPerDiemRate');
       if (rateSel) {
         rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
         rateSel.value = item.perDiemName || '';
       }
+
       const planContainer = document.getElementById('editPlanRows');
       if (planContainer) planContainer.innerHTML = '';
       const planItems = parsePlanItems(item.planItemsJson);
@@ -1003,6 +1052,10 @@
       const rates = getPerDiemRates(perDiemName);
       const perDiemRate = rates.rateLong;
       const planItems = collectPlanItemsFrom('editPlanRows');
+
+      const paymentMethod = paymentEl.value;
+      const paymentCard = paymentMethod === 'Карта' ? (cardEl.value || '') : '';
+
       return {
         company: companyEl.value,
         department: deptEl.value,
@@ -1010,8 +1063,8 @@
         dateStart: startEl.value,
         dateEnd: endEl.value,
         peopleCount: peopleEl.value,
-        paymentMethod: paymentEl.value,
-        paymentCard: cardEl.value,
+        paymentMethod: paymentMethod,
+        paymentCard: paymentCard,
         perDiemRate: perDiemRate,
         perDiemName: perDiemName,
         planItemsJson: JSON.stringify(planItems),
