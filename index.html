@@ -284,7 +284,7 @@
             <label class="small text-muted fw-bold">Карта (за потреби)</label>
             <input type="text" class="form-control" id="editCard" placeholder="Номер або назва карти">
           </div>
-          <div class="mb-2">
+          <div class="mb-2" id="editAdminCommentBlock">
             <label class="small text-muted fw-bold">Коментар адміністратора (обов'язково)</label>
             <textarea class="form-control" id="editAdminComment" rows="3" placeholder="Причина змін / коментар"></textarea>
           </div>
@@ -292,6 +292,7 @@
         <div class="modal-footer">
           <button class="btn btn-light" data-bs-dismiss="modal">Скасувати</button>
           <button class="btn btn-success" id="editApproveBtn" onclick="submitEditApprove(this)">Погодити</button>
+          <button class="btn btn-success" id="editSaveBtn" style="display:none" onclick="submitUserEdit(this)">Зберегти</button>
         </div>
       </div>
     </div>
@@ -910,31 +911,51 @@
       setBtnLoading(btn, false);
     }
 
+    function fillEditModalFromItem(reqId, item) {
+      setElValue('editReqId', reqId);
+      setElValue('editCompany', item.company || '');
+      setElValue('editDept', item.dept || '');
+      setElValue('editPurpose', item.purpose || '');
+      setElValue('editStart', item.dStart || '');
+      setElValue('editEnd', item.dEnd || '');
+      setElValue('editPeople', item.people || 1);
+      setElValue('editPayment', item.payment || '');
+      setElValue('editCard', item.paymentCard || '');
+      const rateSel = document.getElementById('editPerDiemRate');
+      if (rateSel) {
+        rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
+        rateSel.value = item.perDiemName || '';
+      }
+      const planContainer = document.getElementById('editPlanRows');
+      if (planContainer) planContainer.innerHTML = '';
+      const planItems = parsePlanItems(item.planItemsJson);
+      if (planItems.length === 0) addPlanRowTo('editPlanRows');
+      else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
+    }
+
+    function setEditModalMode(mode) {
+      const adminBlock = document.getElementById('editAdminCommentBlock');
+      const adminBtn = document.getElementById('editApproveBtn');
+      const saveBtn = document.getElementById('editSaveBtn');
+      if (mode === 'user') {
+        if (adminBlock) adminBlock.style.display = 'none';
+        if (adminBtn) adminBtn.style.display = 'none';
+        if (saveBtn) saveBtn.style.display = 'inline-block';
+      } else {
+        if (adminBlock) adminBlock.style.display = '';
+        if (adminBtn) adminBtn.style.display = 'inline-block';
+        if (saveBtn) saveBtn.style.display = 'none';
+      }
+    }
+
     function openEditModal(reqId, ev) {
       if (ev && ev.stopPropagation) ev.stopPropagation();
       const item = REQUEST_CACHE[reqId];
       if (!item) { showToast("Дані заявки не знайдено"); return; }
       try {
-        setElValue('editReqId', reqId);
-        setElValue('editCompany', item.company || '');
-        setElValue('editDept', item.dept || '');
-        setElValue('editPurpose', item.purpose || '');
-        setElValue('editStart', item.dStart || '');
-        setElValue('editEnd', item.dEnd || '');
-        setElValue('editPeople', item.people || 1);
-        setElValue('editPayment', item.payment || '');
-        setElValue('editCard', item.paymentCard || '');
+        setEditModalMode('admin');
         setElValue('editAdminComment', '');
-        const rateSel = document.getElementById('editPerDiemRate');
-        if (rateSel) {
-          rateSel.innerHTML = DAILY_RATES.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
-          rateSel.value = item.perDiemName || '';
-        }
-        const planContainer = document.getElementById('editPlanRows');
-        if (planContainer) planContainer.innerHTML = '';
-        const planItems = parsePlanItems(item.planItemsJson);
-        if (planItems.length === 0) addPlanRowTo('editPlanRows');
-        else planItems.forEach(i => addPlanRowTo('editPlanRows', i));
+        fillEditModalFromItem(reqId, item);
         editModalInstance.show();
       } catch (e) {
         console.error(e);
@@ -942,9 +963,25 @@
       }
     }
 
-    async function submitEditApprove(btn) {
-      const reqIdEl = document.getElementById('editReqId');
-      const adminCommentEl = document.getElementById('editAdminComment');
+    function openUserEditModal(reqId, ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      const item = REQUEST_CACHE[reqId];
+      if (!item) { showToast("Дані заявки не знайдено"); return; }
+      if (!(item.status === 'Нова' || item.status === 'Уточнено' || item.status === 'Потребує уточнення')) {
+        showToast('Редагування доступне лише для статусів "Нова" / "Уточнено"');
+        return;
+      }
+      try {
+        setEditModalMode('user');
+        fillEditModalFromItem(reqId, item);
+        editModalInstance.show();
+      } catch (e) {
+        console.error(e);
+        showToast("Помилка: " + e);
+      }
+    }
+
+    function collectEditFormData() {
       const companyEl = document.getElementById('editCompany');
       const deptEl = document.getElementById('editDept');
       const purposeEl = document.getElementById('editPurpose');
@@ -954,19 +991,14 @@
       const paymentEl = document.getElementById('editPayment');
       const cardEl = document.getElementById('editCard');
       const rateEl = document.getElementById('editPerDiemRate');
-      const reqId = reqIdEl ? reqIdEl.value : '';
-      const adminCommentVal = adminCommentEl ? adminCommentEl.value.trim() : '';
       if (!companyEl || !deptEl || !purposeEl || !startEl || !endEl || !peopleEl || !paymentEl || !cardEl || !rateEl) {
-        showToast("Помилка: форма редагування не готова");
-        return;
+        throw new Error('Помилка: форма редагування не готова');
       }
-      if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
-      setBtnLoading(btn, true);
-      const days = getTripDays(startEl.value, endEl.value);
-      const perDiemName = rateEl ? rateEl.value : "";
+      const perDiemName = rateEl.value || "";
       const rates = getPerDiemRates(perDiemName);
       const perDiemRate = rates.rateLong;
-      const data = {
+      const planItems = collectPlanItemsFrom('editPlanRows');
+      return {
         company: companyEl.value,
         department: deptEl.value,
         purpose: purposeEl.value,
@@ -975,12 +1007,49 @@
         peopleCount: peopleEl.value,
         paymentMethod: paymentEl.value,
         paymentCard: cardEl.value,
-        adminComment: adminCommentVal,
         perDiemRate: perDiemRate,
         perDiemName: perDiemName,
-        planItemsJson: JSON.stringify(collectPlanItemsFrom('editPlanRows')),
-        planItemsTotal: collectPlanItemsFrom('editPlanRows').reduce((s, i) => s + (Number(i.amount) || 0), 0)
+        planItemsJson: JSON.stringify(planItems),
+        planItemsTotal: planItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
       };
+    }
+
+    async function submitUserEdit(btn) {
+      const reqIdEl = document.getElementById('editReqId');
+      const reqId = reqIdEl ? reqIdEl.value : '';
+      if (!reqId) { showToast('Не знайдено reqId'); return; }
+      let data;
+      try {
+        data = collectEditFormData();
+      } catch (e) {
+        showToast(String(e));
+        return;
+      }
+      setBtnLoading(btn, true);
+      try {
+        const res = await sendPost('updateRequestByUser', { rowId: reqId, userId: USER_ID, userName: USER_NAME, data });
+        if (res.status === 'success') { showToast(res.message); editModalInstance.hide(); loadUserHistory(); }
+        else showToast(res.message);
+      } catch (err) { showToast("Помилка: " + err); }
+      setBtnLoading(btn, false);
+    }
+
+    async function submitEditApprove(btn) {
+      const reqIdEl = document.getElementById('editReqId');
+      const adminCommentEl = document.getElementById('editAdminComment');
+      const reqId = reqIdEl ? reqIdEl.value : '';
+      const adminCommentVal = adminCommentEl ? adminCommentEl.value.trim() : '';
+      if (!adminCommentVal) { showToast("Потрібен коментар адміністратора"); return; }
+      setBtnLoading(btn, true);
+      let data;
+      try {
+        data = collectEditFormData();
+      } catch (e) {
+        showToast(String(e));
+        setBtnLoading(btn, false);
+        return;
+      }
+      data.adminComment = adminCommentVal;
       try {
         const res = await sendPost('updateAndApproveRequest', { rowId: reqId, approver: USER_NAME, approverId: USER_ID, data });
         if (res.status === 'success') { showToast(res.message); editModalInstance.hide(); loadApproverPending(); }
@@ -1219,6 +1288,17 @@
       let editHtml = '';
       if (item.editSummary) {
         editHtml = `<div class="mt-2 small text-muted"><i class="bi bi-pencil-square"></i> Зміни: ${item.editSummary}</div>`;
+      }
+
+      // User can edit own request while it is not yet approved: New / Clarification flows
+      let userEditBtnHtml = '';
+      const canUserEdit = (!isApprover) && (item.status === 'Нова' || item.status === 'Уточнено' || item.status === 'Потребує уточнення');
+      if (canUserEdit) {
+        userEditBtnHtml = `
+          <div class="mt-2 no-modal">
+            <button class="btn btn-outline-primary w-100" onclick="openUserEditModal('${item.reqId}', event)">✏️ Редагувати заявку</button>
+          </div>
+        `;
       }
 
       const userComment = item.userComment ? `<div class="mt-2 small text-muted"><i class="bi bi-chat-quote"></i> Коментар: ${item.userComment}</div>` : '';

@@ -133,6 +133,8 @@ function doPost(e) {
         result = { status: 'success', message: approveRequest(params.rowId, params.approver, params.decision, params.approverId) };
       } else if (params.action === 'updateAndApproveRequest') {
         result = { status: 'success', message: updateAndApproveRequest(params.rowId, params.approver, params.approverId, params.data) };
+      } else if (params.action === 'updateRequestByUser') {
+        result = { status: 'success', message: updateRequestByUser(params.rowId, params.userId, params.userName, params.data) };
       } else if (params.action === 'requestClarification') {
         result = { status: 'success', message: requestClarification(params.rowId, params.adminId, params.adminName, params.question) };
       } else if (params.action === 'submitClarificationAnswer') {
@@ -458,6 +460,73 @@ function normalizeClarify(text) {
   const t = String(text || "").trim();
   if (!t || t === "Створено заявку") return "";
   return t;
+}
+
+function updateRequestByUser(reqId, userId, userName, data) {
+  if (!reqId) throw new Error('Заявку не знайдено');
+  const sheet = getLogsSheet();
+  const ids = sheet.getRange("C:C").getValues().flat();
+  const rowIndex = ids.findIndex(id => String(id) === String(reqId));
+  if (rowIndex === -1) throw new Error("Заявку не знайдено");
+  const r = rowIndex + 1;
+
+  const current = mapRowToObj(sheet.getRange(r, 1, 1, Math.max(sheet.getLastColumn(), COL.LOG_JSON)).getValues()[0]);
+
+  if (String(current.userId) !== String(userId)) throw new Error('Немає доступу');
+
+  const st = String(current.status || '');
+  const canEdit = (st === 'Нова' || st === 'Уточнено' || st === 'Потребує уточнення');
+  if (!canEdit) throw new Error('Статус не дозволяє редагування: ' + st);
+
+  const updated = {
+    company: data && data.company ? data.company : current.company,
+    dept: data && data.department ? data.department : current.dept,
+    purpose: data && data.purpose ? data.purpose : current.purpose,
+    dStart: data && data.dateStart ? data.dateStart : current.dStart,
+    dEnd: data && data.dateEnd ? data.dateEnd : current.dEnd,
+    people: data && data.peopleCount ? data.peopleCount : current.people,
+    payment: data && data.paymentMethod ? data.paymentMethod : current.payment,
+    card: data && data.paymentCard ? data.paymentCard : current.paymentCard,
+    perDiemName: data && data.perDiemName ? data.perDiemName : current.perDiemName,
+    perDiemRate: (data && Number(data.perDiemRate)) || Number(current.perDiemRate) || 0,
+    planItemsJson: data && data.planItemsJson ? data.planItemsJson : current.planItemsJson,
+    planItemsTotal: (data && Number(data.planItemsTotal)) || Number(current.planItemsTotal) || 0
+  };
+
+  if (updated.payment !== "Карта") updated.card = "";
+  if (updated.payment === "Карта" && !updated.card) throw new Error("Вкажіть карту для зарахування");
+
+  const days = getTripDays(updated.dStart, updated.dEnd);
+  const rateInfo = resolvePerDiemRates(updated.perDiemName, days, updated.perDiemRate);
+  updated.perDiemRate = rateInfo.rateLong;
+  const dailyTotal = calculateDailyTotalTiers(updated.dStart, updated.dEnd, updated.people, rateInfo.rateShort, rateInfo.rateLong);
+
+  const summary = buildEditSummary(current, updated, dailyTotal);
+
+  sheet.getRange(r, COL.COMPANY, 1, 1).setValue(updated.company);
+  sheet.getRange(r, COL.DEPT, 1, 1).setValue(updated.dept);
+  sheet.getRange(r, COL.PURPOSE, 1, 1).setValue(updated.purpose);
+  sheet.getRange(r, COL.DATE_START, 1, 1).setValue("'" + updated.dStart);
+  sheet.getRange(r, COL.DATE_END, 1, 1).setValue("'" + updated.dEnd);
+  sheet.getRange(r, COL.PEOPLE, 1, 1).setValue(updated.people);
+  sheet.getRange(r, COL.PER_DIEM_NAME, 1, 1).setValue(updated.perDiemName);
+  sheet.getRange(r, COL.PER_DIEM_RATE, 1, 1).setValue(updated.perDiemRate);
+  sheet.getRange(r, COL.DAILY_TOTAL, 1, 1).setValue(dailyTotal);
+  sheet.getRange(r, COL.PLAN_ITEMS_JSON, 1, 1).setValue(updated.planItemsJson);
+  sheet.getRange(r, COL.PLAN_ITEMS_TOTAL, 1, 1).setValue(updated.planItemsTotal);
+  sheet.getRange(r, COL.PAYMENT, 1, 1).setValue(updated.payment);
+  sheet.getRange(r, COL.PAYMENT_CARD, 1, 1).setValue(updated.card);
+  sheet.getRange(r, COL.UPDATED_AT, 1, 1).setValue(nowTs());
+
+  appendLogEntry(sheet, r, {
+    type: "зміни",
+    userId: userId,
+    userName: userName || current.userName || '',
+    date: nowTs(),
+    text: summary || 'Зміни автора'
+  });
+
+  return "✅ Зміни збережено.";
 }
 
 function updateAndApproveRequest(reqId, approver, approverId, data) {
